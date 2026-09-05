@@ -25,5 +25,7 @@ if(MSVC)
     target_compile_options(activity_collector PRIVATE /W4 /permissive- /utf-8)
 else()
     target_compile_options(activity_collector PRIVATE -Wall -Wextra -Wpedantic)
-    target_link_options(activity_collector PRIVATE -municode)
+    # Static-link the GCC runtime so the exe can start from the HKCU Run key at
+    # boot, where PATH does not include the MinGW bin directory.
+    target_link_options(activity_collector PRIVATE -municode -static-libgcc -static-libstdc++)
 endif()

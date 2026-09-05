@@ -102,16 +102,21 @@ std::wstring module_path() {
 }
 
 // The autostart command preserves the current --server/--token/... arguments
-// so a boot-time launch talks to the same backend as this manual run. Only
-// --console is stripped: a session-start launch should stay quiet.
+// so a boot-time launch talks to the same backend as this manual run. The
+// program path (argv[0]), --console and --autostart <value> are stripped.
 std::wstring autostart_command() {
     std::wstring command = L"\"" + module_path() + L"\"";
-    for (const auto& argument : command_line_arguments()) {
-        if (argument == L"--console" || argument.rfind(L"--autostart", 0) == 0) continue;
-        if (argument.find_first_of(L" \t") != std::wstring::npos) {
-            command += L" \"" + argument + L"\"";
+    const auto arguments = command_line_arguments();
+    for (std::size_t index = 1; index < arguments.size(); ++index) {
+        if (arguments[index] == L"--console") continue;
+        if (arguments[index].rfind(L"--autostart", 0) == 0) {
+            if (index + 1 < arguments.size()) ++index; // skip the on/off value
+            continue;
+        }
+        if (arguments[index].find_first_of(L" \t") != std::wstring::npos) {
+            command += L" \"" + arguments[index] + L"\"";
         } else {
-            command += L" " + argument;
+            command += L" " + arguments[index];
         }
     }
     return command;
@@ -220,12 +225,6 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l
 }
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
-    HANDLE instance_mutex = CreateMutexW(nullptr, TRUE, L"Local\\ActivityTimelineCollector");
-    if (!instance_mutex || GetLastError() == ERROR_ALREADY_EXISTS) {
-        if (instance_mutex) CloseHandle(instance_mutex);
-        return 0;
-    }
-
     const Options options = parse_options();
     if (options.console) {
         AllocConsole();
@@ -233,12 +232,19 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         freopen_s(&stream, "CONOUT$", "w", stdout);
     }
 
-    // Scriptable autostart management: apply and exit without collecting.
+    // Scriptable autostart management runs before the single-instance check so
+    // it keeps working while another instance is already collecting.
     if (options.autostart_action != 0) {
         if (!set_autostart(options.autostart_action > 0)) return 5;
         if (options.console) {
             std::printf("autostart %s\n", options.autostart_action > 0 ? "on" : "off");
         }
+        return 0;
+    }
+
+    HANDLE instance_mutex = CreateMutexW(nullptr, TRUE, L"Local\\ActivityTimelineCollector");
+    if (!instance_mutex || GetLastError() == ERROR_ALREADY_EXISTS) {
+        if (instance_mutex) CloseHandle(instance_mutex);
         return 0;
     }
 

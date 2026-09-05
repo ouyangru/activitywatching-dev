@@ -142,3 +142,11 @@
 - **解决：** 洞察函数先 `dict(row)` 转普通字典再安全取 `purpose`；`reason` 从 `_Active` 移到 `_Combined` 逐区间持有；合并条件改用 `_activity_key()` 语义比较。同时无设备占位行补齐 `purpose` 键。
 - **版本信息：** Activity Timeline 0.4.0（merger/insights/heartbeat/daily 功能集）。
 - **验证：** 本地回归 34 passed（含 10 个新测试：固定样例合并、重叠不翻倍、主活动总时长不超当天、结果可重复）；双设备冒烟脚本全链路通过。
+
+## 2026-09-06T02:29:59+08:00 · Collector v0.2.0 Startup Crash
+
+- **问题：** 重新编译的 Windows 采集器在脱离 MinGW 环境启动时立即退出（退出码 0xc0000139，找不到入口点）；以分离进程或开机自启方式启动必然复现。
+- **根因：** MinGW 默认动态链接 `libstdc++-6.dll` 与 `libgcc_s_seh-1.dll`，此前仅因启动 shell 的 PATH 包含 `D:/mingw64/bin` 才能运行；Explorer 从 HKCU Run 键开机启动时 PATH 不含该目录，加载到不匹配的运行时 DLL 后解析入口点失败。
+- **解决：** CMakeLists 非 MSVC 分支增加 `-static-libgcc -static-libstdc++` 链接选项，exe 仅依赖系统 DLL（ADVAPI32/KERNEL32/msvcrt/SHELL32/USER32/WINHTTP）。
+- **版本信息：** activity_collector 0.2.0（MinGW 14.2 / CMake 3.31）
+- **验证：** `objdump -p` 确认导入表不含 MinGW 运行时 DLL；以仅含 SystemRoot 的最小环境变量分离启动，进程稳定驻留；心跳与数据上传链路经本地桩服务器端到端验证（heartbeat 请求体符合后端 `HeartbeatRequest` 契约，`events/batch` 收到 503 后离线队列 606 条完整保留并按退避重试）。
