@@ -274,6 +274,47 @@ function renderChart(items) {
   }, true);
 }
 
+// 按时间视图：把同设备行、同类别、间隔小于阈值的连续事件合并成一个色块，详情仅在 hover 提示中展示
+const STACK_MERGE_GAP_SECONDS = 120;
+
+function mergeStackSegments(segments) {
+  const groups = new Map();
+  segments.forEach((segment) => {
+    const start = new Date(segment.start_time).getTime();
+    const end = new Date(segment.end_time).getTime();
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return;
+    const rowLabel = segment.platform === "android" ? "手机" : "电脑";
+    if (!groups.has(rowLabel)) groups.set(rowLabel, []);
+    groups.get(rowLabel).push({ segment, start, end });
+  });
+  const merged = [];
+  groups.forEach((list, rowLabel) => {
+    list.sort((left, right) => left.start - right.start);
+    let current = null;
+    list.forEach(({ segment, start, end }) => {
+      if (!current || segment.category !== current.category || start - current.end > STACK_MERGE_GAP_SECONDS * 1000) {
+        if (current) merged.push(current);
+        current = {
+          category: segment.category,
+          rowLabel,
+          start,
+          end,
+          seconds: Math.max(0, Math.round((end - start) / 1000)),
+          behaviors: [segment.behavior],
+          count: 1,
+        };
+      } else {
+        current.end = Math.max(current.end, end);
+        current.seconds += Math.max(0, Math.round((end - start) / 1000));
+        if (!current.behaviors.includes(segment.behavior)) current.behaviors.push(segment.behavior);
+        current.count += 1;
+      }
+    });
+    if (current) merged.push(current);
+  });
+  return merged;
+}
+
 function renderTimeStack(segments) {
   if (!window.echarts) return;
   const chart = document.getElementById("timeStackChart");
@@ -287,28 +328,25 @@ function renderTimeStack(segments) {
     "16:00—24:00 电脑", "16:00—24:00 手机",
   ];
   const segmentParts = [];
-  segments.forEach((segment) => {
-    const startDate = new Date(segment.start_time);
-    const endDate = new Date(segment.end_time);
-    if (!Number.isFinite(startDate.getTime()) || !Number.isFinite(endDate.getTime())) return;
-    let cursor = startDate.getTime();
-    const end = endDate.getTime();
+  mergeStackSegments(segments).forEach((block) => {
+    let cursor = block.start;
+    const end = block.end;
     while (cursor < end) {
       const current = new Date(cursor);
       const dayStart = new Date(current.getFullYear(), current.getMonth(), current.getDate()).getTime();
       const elapsedHours = (cursor - dayStart) / 3600000;
       const timeBlock = Math.min(2, Math.floor(elapsedHours / 8));
-      const deviceRow = segment.platform === "android" ? 1 : 0;
+      const deviceRow = block.rowLabel === "手机" ? 1 : 0;
       const row = timeBlock * 2 + deviceRow;
       const rowEnd = dayStart + (timeBlock + 1) * 8 * 3600000;
       const partEnd = Math.min(end, rowEnd);
       const rowStart = dayStart + timeBlock * 8 * 3600000;
       segmentParts.push({
-        category: segment.category,
+        category: block.category,
         row,
         start: (cursor - rowStart) / 3600000,
         end: (partEnd - rowStart) / 3600000,
-        segment,
+        block,
       });
       cursor = partEnd;
     }
@@ -319,8 +357,8 @@ function renderTimeStack(segments) {
     coordinateSystem: "cartesian2d",
     itemStyle: { color: CATEGORY_COLORS[category] },
     data: segmentParts
-      .filter((segment) => segment.category === category)
-      .map((part) => [part.row, part.start, part.end, part.segment]),
+      .filter((part) => part.category === category)
+      .map((part) => [part.row, part.start, part.end, part.block]),
     renderItem(params, api) {
       const start = api.coord([api.value(1), api.value(0)]);
       const end = api.coord([api.value(2), api.value(0)]);
@@ -338,8 +376,12 @@ function renderTimeStack(segments) {
     tooltip: {
       trigger: "item",
       formatter: (params) => {
-        const segment = params.data[3];
-        return `${platformLabel(segment.platform)} · ${segment.category}<br>${segment.behavior}<br>${formatClock(segment.start_time)}—${formatClock(segment.end_time)}`;
+        const block = params.data[3];
+        const behaviors = block.behaviors.length > 4
+          ? `${block.behaviors.slice(0, 4).join("、")} 等 ${block.behaviors.length} 项`
+          : block.behaviors.join("、");
+        const records = block.count > 1 ? ` · ${block.count} 段记录` : "";
+        return `${block.rowLabel} · ${block.category}<br>${escapeHtml(behaviors)}<br>${formatClock(block.start)}—${formatClock(block.end)} · ${formatDuration(block.seconds)}${records}`;
       },
     },
     legend: { show: true, top: 0, textStyle: { color: "#91a49e", fontSize: 10 }, itemWidth: 10, itemHeight: 8 },

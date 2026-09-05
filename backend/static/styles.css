@@ -159,6 +159,20 @@ h1 { margin: 0; font-size: clamp(30px, 4.2vw, 52px); line-height: 1.13; letter-s
 
 .side-column { display: grid; gap: 18px; }
 .distribution-panel { padding: 29px 28px; }
+
+/* Trio layout (index page): timeline + insights + distribution in one row */
+.content-grid.trio {
+  grid-template-columns: minmax(0, 1.55fr) minmax(280px, 1fr) minmax(300px, 1fr);
+  align-items: stretch;
+}
+.content-grid.trio .panel-heading { flex-wrap: wrap; row-gap: 12px; }
+.content-grid.trio .timeline-actions { flex-wrap: wrap; }
+.content-grid.trio .insights-panel,
+.content-grid.trio .distribution-panel { display: flex; flex-direction: column; }
+.content-grid.trio .chart { flex: 1; height: auto; min-height: 220px; max-height: 340px; }
+.content-grid.trio .time-stack-chart { flex: 1; }
+.content-grid.trio .ranking-list { flex: 1; align-content: start; }
+.bottom-privacy { margin-top: 18px; max-width: 680px; }
 .view-switch { display: inline-flex; flex: 0 0 auto; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 9px; background: rgba(255,255,255,.025); }
 .view-switch-button { min-width: 52px; color: var(--muted); background: transparent; border: 0; border-radius: 6px; padding: 6px 9px; font-size: 11px; cursor: pointer; pointer-events: auto; }
 .view-switch-button:hover, .view-switch-button.is-active { color: var(--text); background: rgba(145,229,182,.12); }
@@ -185,9 +199,17 @@ h1 { margin: 0; font-size: clamp(30px, 4.2vw, 52px); line-height: 1.13; letter-s
 .toast { position: fixed; right: 26px; bottom: 26px; transform: translateY(18px); opacity: 0; pointer-events: none; background: #e9f6ee; color: #10231b; padding: 11px 16px; border-radius: 10px; box-shadow: var(--shadow); font-size: 13px; transition: .25s ease; }
 .toast.visible { transform: translateY(0); opacity: 1; }
 
+@media (max-width: 1150px) {
+  .content-grid.trio { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .content-grid.trio .timeline-panel { grid-column: 1 / -1; }
+}
+
 @media (max-width: 850px) {
   .shell { width: min(100% - 24px, 680px); }
   .content-grid { grid-template-columns: 1fr; }
+  .content-grid.trio { grid-template-columns: 1fr; }
+  .content-grid.trio .timeline-panel { grid-column: auto; }
+  .content-grid.trio .chart { min-height: 200px; max-height: none; }
   .stats { grid-template-columns: repeat(2, 1fr); }
   .stats article:nth-child(2) { border-right: 0; }
   .stats article:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
