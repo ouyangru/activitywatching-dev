@@ -1,0 +1,37 @@
+idle_threshold_ms: 60000
+short_switch_seconds: 15
+
+rules:
+  - match:
+      process: "^(Code|code-insiders)\\.exe$"
+    behavior: "编程"
+    category: "学习"
+    description: "使用 VS Code 编写 {project}"
+
+  - match:
+      process: "^(WindowsTerminal|wt|cmd|powershell|pwsh)\\.exe$"
+    behavior: "编程"
+    category: "学习"
+    description: "使用 {app} 进行开发"
+
+  - match:
+      process: "^(chrome|msedge|firefox)\\.exe$"
+      title: "哔哩哔哩|bilibili|YouTube"
+    behavior: "观看视频"
+    category: "娱乐"
+    description: "观看在线视频"
+
+  # 更具体的网站规则必须放在宽泛的技术关键词之前。例如视频标题
+  # 可能同时带有 "NCCL"，但只要来自 Bilibili/YouTube 就应归为娱乐。
+  - match:
+      process: "^(chrome|msedge|firefox)\\.exe$"
+      title: "CUDA|NCCL|LeetCode|GitHub|Stack Overflow|技术文档|documentation"
+    behavior: "阅读技术资料"
+    category: "学习"
+    description: "使用浏览器阅读技术资料"
+
+  - match:
+      process: "^(WeChat|Weixin|Feishu|Lark)\\.exe$"
+    behavior: "沟通"
+    category: "工作"
+    description: "使用 {app} 沟通"
