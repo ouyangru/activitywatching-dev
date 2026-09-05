@@ -1,4 +1,7 @@
 #include "CollectorWorker.h"
+#include "Diagnostics.h"
+
+#include <Windows.h>
 
 #include <algorithm>
 #include <chrono>
@@ -23,6 +26,7 @@ CollectorWorker::CollectorWorker(
 
 CollectorWorker::~CollectorWorker() {
     stop();
+    if (wake_event_) CloseHandle(wake_event_);
 }
 
 void CollectorWorker::start() {
@@ -38,7 +42,7 @@ void CollectorWorker::submit(FeatureSnapshot snapshot) {
         if (stopping_) return;
         pending_.push_back(std::move(snapshot));
     }
-    condition_.notify_one();
+    if (wake_event_) SetEvent(wake_event_);
 }
 
 void CollectorWorker::stop() {
@@ -47,7 +51,7 @@ void CollectorWorker::stop() {
         if (!started_ || stopping_) return;
         stopping_ = true;
     }
-    condition_.notify_one();
+    if (wake_event_) SetEvent(wake_event_);
     if (thread_.joinable()) thread_.join();
     started_ = false;
 }
@@ -58,10 +62,13 @@ void CollectorWorker::run() {
     // so report every 60s. Heartbeat failures use their own backoff and never
     // delay (or get delayed by) data uploads.
     constexpr auto kHeartbeatInterval = 60s;
+    // Even if a wakeup were ever lost, this cap bounds the recovery latency.
+    constexpr auto kMaxSleep = 60s;
     auto next_upload_attempt = clock::now();
     auto next_heartbeat = clock::now();
     unsigned int consecutive_failures = 0;
     unsigned int heartbeat_failures = 0;
+    diagnostics::write("worker thread started");
 
     for (;;) {
         std::deque<FeatureSnapshot> snapshots;
@@ -70,9 +77,14 @@ void CollectorWorker::run() {
             std::unique_lock lock(mutex_);
             if (pending_.empty() && !stopping_) {
                 // Wake up for the earliest of: heartbeat due, upload retry due.
-                auto deadline = next_heartbeat;
-                if (uploader_.pending_count() > 0) deadline = std::min(deadline, next_upload_attempt);
-                condition_.wait_until(lock, deadline, [this] { return stopping_ || !pending_.empty(); });
+                auto wake = next_heartbeat;
+                if (uploader_.pending_count() > 0) wake = std::min(wake, next_upload_attempt);
+                auto budget = std::chrono::duration_cast<std::chrono::milliseconds>(wake - clock::now());
+                if (budget < 0ms) budget = 0ms;
+                if (budget > kMaxSleep) budget = std::chrono::duration_cast<std::chrono::milliseconds>(kMaxSleep);
+                lock.unlock();
+                if (wake_event_) WaitForSingleObject(wake_event_, static_cast<DWORD>(budget.count()));
+                lock.lock();
             }
             snapshots.swap(pending_);
             should_stop = stopping_;
@@ -87,10 +99,13 @@ void CollectorWorker::run() {
             if (uploader_.post_heartbeat(device_id_)) {
                 heartbeat_failures = 0;
                 next_heartbeat = now + kHeartbeatInterval;
+                diagnostics::write("heartbeat ok");
             } else {
                 const auto exponent = std::min(heartbeat_failures, 3U);
+                const auto delay = std::min(300U, 60U * (1U << exponent));
                 ++heartbeat_failures;
-                next_heartbeat = now + std::chrono::seconds(std::min(300U, 60U * (1U << exponent)));
+                next_heartbeat = now + std::chrono::seconds(delay);
+                diagnostics::write("heartbeat FAILED, retrying in " + std::to_string(delay) + "s");
             }
         }
 
@@ -111,11 +126,14 @@ void CollectorWorker::run() {
             if (upload_ok) {
                 consecutive_failures = 0;
                 next_upload_attempt = clock::now();
+                diagnostics::write("upload ok, remaining=" + std::to_string(uploader_.pending_count()));
             } else {
                 const auto exponent = std::min(consecutive_failures, 6U);
                 const auto delay_seconds = std::min(300U, 5U * (1U << exponent));
                 ++consecutive_failures;
                 next_upload_attempt = clock::now() + std::chrono::seconds(delay_seconds);
+                diagnostics::write("upload FAILED, backing off " + std::to_string(delay_seconds) + "s, remaining=" +
+                                   std::to_string(uploader_.pending_count()));
             }
         }
 
@@ -143,7 +161,14 @@ void CollectorWorker::persist(FeatureSnapshot snapshot) {
     // Store the next sequence before queueing the event. A crash may create a
     // harmless gap, but can never reuse an already uploaded id.
     save_sequence(sequence_);
-    uploader_.enqueue(feature);
+    if (uploader_.enqueue(feature)) {
+        diagnostics::write("persist sequence=" + std::to_string(feature.sequence) + " duration_ms=" +
+                           std::to_string(feature.duration_ms));
+    } else {
+        // enqueue() fails silently on I/O errors by design; the log is the
+        // only place where a broken state/queue path becomes visible.
+        diagnostics::write("enqueue FAILED sequence=" + std::to_string(feature.sequence));
+    }
 }
 
 std::uint64_t CollectorWorker::load_sequence() const {

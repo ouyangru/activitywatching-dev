@@ -166,3 +166,19 @@
 - **解决：** `tests/test_agent.py` 增加 autouse fixture，测试期间 `monkeypatch.delenv` 清除全部 4 个 Agent 环境变量，保证测试封闭性。
 - **版本信息：** Activity Timeline 0.4.0（agent/summarizer/memory 功能集）。
 - **验证：** 本地回归 60 passed（填 Key 状态下两遍稳定）。
+
+## 2026-09-06T03:28:00+08:00 · Collector Network Stack Hangs (WPAD + Proxy Tunnel)
+
+- **问题：** 远程后端（47.82.104.59）长时间收不到 Windows 设备数据。两层网络缺陷叠加：① v0.2.0 的 WinHTTP 使用 `WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY` 触发 WPAD 自动发现（DHCP/DNS wpad.* 探测），worker 线程在 `WinHttpDetectAutoProxyConfigUrl` 内无限挂起，且该挂起不被 `WinHttpSetTimeouts` 覆盖（gdb 栈实证）；② v0.2.1 改读 IE 静态代理后，本机 Clash（127.0.0.1:7897）接受 TCP 连接但对后端目标的 CONNECT 隧道永不完成——进程仅存一条对 7897 的 ESTABLISHED 连接且无任何数据流动，心跳/上传全部失败，而同机 curl 直连 1 秒内可达后端。
+- **根因：** WPAD 探测不受 WinHTTP 超时约束属平台已知行为；本地代理客户端对特定目标转发失败时，静态代理模式没有直连回退路径，采集器作为后台服务无法自愈。
+- **解决：** v0.2.1 弃用 AUTOMATIC_PROXY，仅读用户静态 IE 代理配置（`WinHttpGetIEProxyConfigForCurrentUser`），永不触发 WPAD；v0.2.2 将 `post_json` 拆为直连优先（`NO_PROXY`）+ 失败后回退系统静态代理（`post_json_once`），普通家用/服务器网络零代理开销，企业代理网络自动回退。
+- **版本信息：** activity_collector 0.2.1 → 0.2.2（MinGW 14.2 / CMake 3.31）
+- **验证：** v0.2.2 干净启动后 `collector.log` 记录 `heartbeat ok`（直连）；344 条离线积压 15 秒内补传完成（remaining 344→0）；服务端 `/api/v1/devices` 显示 `windows-AOSIKA` last_seen 与查询时刻仅差 16 秒、在线、collector_version=0.2.2、window_count 4554→4892。
+
+## 2026-09-06T03:28:00+08:00 · Worker Thread Wakeup Freeze (condition_variable::wait_until)
+
+- **问题：** v0.2.0 起采集器工作线程冻结：消息循环正常（WM_TIMER 触发、`emit_window`/`submit` 均完整执行，gdb 断点实证），但 `pending_` 永不被消费，persist/心跳/上传全部停摆，`queue.jsonl`/`sequence.txt` mtime 冻结；gdb attach（停止并恢复全线程）后线程才恢复响应 notify。另观察到调试器附加期间 persist 断点反复命中但文件仍不更新的未解现象，随重写一并消失。
+- **根因：** v0.2.0 把 v0.1.1 的无超时 `condition_.wait(lock, pred)` 改为对 steady_clock 绝对时间点的 `wait_until`；MinGW libstdc++ 的 `__gthr_win32_cond_timedwait` 对该绝对时间换算存在缺陷（gdb 栈显示线程携带 uptime 纪元的 `__abs_time` 无限期阻塞），此状态下通知唤醒不可靠，首次丢唤醒后线程沉睡直至外部扰动。
+- **解决：** v0.2.2 弃用 `std::condition_variable`，改用 Win32 auto-reset event（`CreateEventW`/`SetEvent`/`WaitForSingleObject`）：事件信号可锁存，`SetEvent` 落在"检查 pending_ 为空"与"进入等待"之间也不会丢失；等待预算取 min(下次心跳, 下次上传重试, 60s) 有界，即使任何唤醒丢失最长 60 秒自愈。
+- **版本信息：** activity_collector 0.2.2（MinGW 14.2 / CMake 3.31）
+- **验证：** 无调试器干净启动（ShellExecuteW）后 `collector.log` 显示 worker 每 10 秒 persist+upload、每 60 秒 heartbeat ok，无需任何外部干预持续运行。

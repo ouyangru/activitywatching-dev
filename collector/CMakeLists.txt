@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(activity_collector VERSION 0.2.0 LANGUAGES CXX)
+project(activity_collector VERSION 0.2.2 LANGUAGES CXX)
 
 if(NOT WIN32)
     message(FATAL_ERROR "activity_collector uses Win32 APIs and must be built on Windows")
@@ -13,6 +13,7 @@ add_executable(activity_collector WIN32
     src/IdleDetector.cpp
     src/BatchUploader.cpp
     src/CollectorWorker.cpp
+    src/Diagnostics.cpp
 )
 
 target_include_directories(activity_collector PRIVATE include)

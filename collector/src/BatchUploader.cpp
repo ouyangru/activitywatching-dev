@@ -1,4 +1,5 @@
 #include "BatchUploader.h"
+#include "Diagnostics.h"
 
 #include <algorithm>
 #include <chrono>
@@ -70,8 +71,11 @@ BatchUploader::BatchUploader(std::wstring server_url, std::wstring api_token, st
             batch_size_(batch_size),
       max_queue_(max_queue) {
     const bool endpoint_valid = parse_endpoint();
-    (void)endpoint_valid;
     queue_size_ = read_queue().size();
+    diagnostics::write(std::string("uploader init: endpoint=") + (endpoint_valid ? "ok" : "INVALID") + " host=" +
+                       utf8(endpoint_.host) + " port=" + std::to_string(endpoint_.port) +
+                       " secure=" + (endpoint_.secure ? "yes" : "no") + " queued=" + std::to_string(queue_size_) +
+                       " queue_path=" + utf8(queue_path_.wstring()));
 }
 
 bool BatchUploader::parse_endpoint() {
@@ -199,13 +203,66 @@ bool BatchUploader::post_batch(const std::vector<std::string>& lines) const {
     return post_json(path, body.str());
 }
 
+// Proxy selection deliberately avoids WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY:
+// that mode runs WPAD auto-discovery (DHCP/DNS wpad.* lookups) whose hangs are
+// not covered by WinHttpSetTimeouts, and on networks running local proxy
+// clients with "automatically detect settings" left enabled the collector's
+// worker thread was observed blocked indefinitely inside
+// WinHttpDetectAutoProxyConfigUrl. We honour only the static per-user proxy
+// configuration (what Clash & friends write); without one we connect directly.
+struct ProxySelection {
+    bool use_proxy{};
+    std::wstring server;
+    std::wstring bypass;
+};
+
+ProxySelection select_proxy() {
+    ProxySelection selection;
+    WINHTTP_CURRENT_USER_IE_PROXY_CONFIG config{};
+    if (WinHttpGetIEProxyConfigForCurrentUser(&config)) {
+        if (config.lpszProxy) {
+            selection.use_proxy = true;
+            selection.server = config.lpszProxy;
+            if (config.lpszProxyBypass) selection.bypass = config.lpszProxyBypass;
+        }
+        if (config.lpszAutoConfigUrl) GlobalFree(config.lpszAutoConfigUrl);
+        if (config.lpszProxy) GlobalFree(config.lpszProxy);
+        if (config.lpszProxyBypass) GlobalFree(config.lpszProxyBypass);
+    }
+    if (selection.use_proxy) {
+        if (selection.bypass.empty()) selection.bypass = L"<local>";
+        else if (selection.bypass.find(L"<local>") == std::wstring::npos) selection.bypass += L";<local>";
+    }
+    return selection;
+}
+
 bool BatchUploader::post_json(const std::wstring& path, const std::string& payload) const {
+    // Direct connection first: the activity backend is a plain reachable
+    // server, while local proxy clients (Clash & friends) were observed
+    // accepting the TCP connection but never completing the CONNECT tunnel,
+    // leaving an ESTABLISHED socket that never delivers a response. Only when
+    // the direct route fails do we honour the user's static proxy config,
+    // which is what corporate networks require.
+    if (post_json_once(path, payload, nullptr)) return true;
+    const ProxySelection proxy = select_proxy();
+    if (proxy.use_proxy && post_json_once(path, payload, &proxy)) return true;
+    return false;
+}
+
+bool BatchUploader::post_json_once(const std::wstring& path, const std::string& payload,
+                                    const ProxySelection* proxy) const {
     HINTERNET session = WinHttpOpen(widen("ActivityTimelineCollector/" ACTIVITY_COLLECTOR_VERSION).c_str(),
-                                    WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
-    if (!session) return false;
+                                    proxy ? WINHTTP_ACCESS_TYPE_NAMED_PROXY : WINHTTP_ACCESS_TYPE_NO_PROXY,
+                                    proxy ? proxy->server.c_str() : WINHTTP_NO_PROXY_NAME,
+                                    proxy ? proxy->bypass.c_str() : WINHTTP_NO_PROXY_BYPASS, 0);
+    if (!session) {
+        diagnostics::write("post_json: WinHttpOpen failed gle=" + std::to_string(GetLastError()));
+        return false;
+    }
     WinHttpSetTimeouts(session, 3000, 3000, 5000, 5000);
     HINTERNET connection = WinHttpConnect(session, endpoint_.host.c_str(), endpoint_.port, 0);
     if (!connection) {
+        diagnostics::write("post_json: WinHttpConnect failed gle=" + std::to_string(GetLastError()));
         WinHttpCloseHandle(session);
         return false;
     }
@@ -213,18 +270,29 @@ bool BatchUploader::post_json(const std::wstring& path, const std::string& paylo
                                            WINHTTP_DEFAULT_ACCEPT_TYPES,
                                            endpoint_.secure ? WINHTTP_FLAG_SECURE : 0);
     bool success = false;
-    if (request) {
+    if (!request) {
+        diagnostics::write("post_json: WinHttpOpenRequest failed gle=" + std::to_string(GetLastError()));
+    } else {
         std::wstring headers = L"Content-Type: application/json; charset=utf-8\r\n";
         if (!api_token_.empty()) headers += L"Authorization: Bearer " + api_token_ + L"\r\n";
-        if (WinHttpSendRequest(request, headers.c_str(), static_cast<DWORD>(-1),
-                               const_cast<char*>(payload.data()), static_cast<DWORD>(payload.size()),
-                               static_cast<DWORD>(payload.size()), 0) &&
-            WinHttpReceiveResponse(request, nullptr)) {
+        if (!WinHttpSendRequest(request, headers.c_str(), static_cast<DWORD>(-1),
+                                const_cast<char*>(payload.data()), static_cast<DWORD>(payload.size()),
+                                static_cast<DWORD>(payload.size()), 0)) {
+            diagnostics::write("post_json: WinHttpSendRequest failed (proxy=" + std::string(proxy ? "on" : "off") +
+                               ") gle=" + std::to_string(GetLastError()));
+        } else if (!WinHttpReceiveResponse(request, nullptr)) {
+            diagnostics::write("post_json: WinHttpReceiveResponse failed (proxy=" + std::string(proxy ? "on" : "off") +
+                               ") gle=" + std::to_string(GetLastError()));
+        } else {
             DWORD status = 0;
             DWORD size = sizeof(status);
             if (WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
                                     WINHTTP_HEADER_NAME_BY_INDEX, &status, &size, WINHTTP_NO_HEADER_INDEX)) {
                 success = status >= 200 && status < 300;
+                if (!success) {
+                    diagnostics::write("post_json: HTTP status " + std::to_string(status) + " (proxy=" +
+                                       std::string(proxy ? "on" : "off") + ")");
+                }
             }
         }
         WinHttpCloseHandle(request);

@@ -8,7 +8,6 @@
 #include <Windows.h>
 
 #include <chrono>
-#include <condition_variable>
 #include <cstdint>
 #include <deque>
 #include <filesystem>
@@ -58,7 +57,13 @@ private:
     std::uint64_t sequence_{};
 
     std::mutex mutex_;
-    std::condition_variable condition_;
+    // Win32 auto-reset event instead of std::condition_variable: the event's
+    // signal LATCHES, so a SetEvent() that fires between the worker's
+    // "pending_ empty" check and WaitForSingleObject() can never be lost.
+    // MinGW's condition_variable timed wait (__gthr_win32_cond_timedwait)
+    // was observed hanging indefinitely with steady_clock deadlines, only
+    // recovering when a debugger attached.
+    HANDLE wake_event_{CreateEventW(nullptr, FALSE, FALSE, nullptr)};
     std::deque<FeatureSnapshot> pending_;
     std::thread thread_;
     bool started_{false};

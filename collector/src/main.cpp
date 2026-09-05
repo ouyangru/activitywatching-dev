@@ -1,6 +1,7 @@
 #include "BatchUploader.h"
 #include "ClipboardObserver.h"
 #include "CollectorWorker.h"
+#include "Diagnostics.h"
 #include "FeatureWindow.h"
 #include "IdleDetector.h"
 #include "InputAggregator.h"
@@ -8,6 +9,7 @@
 
 #include <Windows.h>
 #include <shellapi.h>
+#include <shlobj.h>
 
 #include <algorithm>
 #include <chrono>
@@ -17,6 +19,10 @@
 #include <memory>
 #include <string>
 #include <vector>
+
+#ifndef ACTIVITY_COLLECTOR_VERSION
+#define ACTIVITY_COLLECTOR_VERSION "dev"
+#endif
 
 namespace {
 constexpr UINT_PTR kSampleTimer = 1;
@@ -81,11 +87,34 @@ Options parse_options() {
     return options;
 }
 
+std::string narrow(const std::wstring& value) {
+    if (value.empty()) return {};
+    const int size = WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), nullptr, 0,
+                                         nullptr, nullptr);
+    if (size <= 0) return {};
+    std::string result(static_cast<std::size_t>(size), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), result.data(), size, nullptr,
+                        nullptr);
+    return result;
+}
+
 std::filesystem::path data_directory() {
+    // Prefer the known-folder API over the LOCALAPPDATA environment variable:
+    // environment blocks are stripped in some launch contexts (services,
+    // scheduled tasks), and the temp-directory fallback can then resolve to a
+    // location the user cannot write to, where every ofstream open fails
+    // silently.
+    PWSTR base = nullptr;
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, KF_FLAG_DEFAULT, nullptr, &base))) {
+        std::filesystem::path directory = std::filesystem::path(base) / L"ActivityTimeline";
+        CoTaskMemFree(base);
+        return directory;
+    }
     wchar_t buffer[32768]{};
     const DWORD length = GetEnvironmentVariableW(L"LOCALAPPDATA", buffer, static_cast<DWORD>(std::size(buffer)));
-    const std::filesystem::path base = length ? std::filesystem::path(std::wstring(buffer, length)) : std::filesystem::temp_directory_path();
-    return base / L"ActivityTimeline";
+    const std::filesystem::path fallback =
+        length ? std::filesystem::path(std::wstring(buffer, length)) : std::filesystem::temp_directory_path();
+    return fallback / L"ActivityTimeline";
 }
 
 std::wstring device_id() {
@@ -245,10 +274,18 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     HANDLE instance_mutex = CreateMutexW(nullptr, TRUE, L"Local\\ActivityTimelineCollector");
     if (!instance_mutex || GetLastError() == ERROR_ALREADY_EXISTS) {
         if (instance_mutex) CloseHandle(instance_mutex);
+        diagnostics::write("another instance is already running; exiting.");
         return 0;
     }
 
     const auto directory = data_directory();
+    diagnostics::initialize(directory / L"collector.log");
+    diagnostics::write(std::string("collector ") + ACTIVITY_COLLECTOR_VERSION +
+                       " starting: pid=" + std::to_string(GetCurrentProcessId()) + " server=" + narrow(options.server) +
+                       " token=" + (options.token.empty() ? "none" : "set") +
+                       " interval=" + std::to_string(options.interval_seconds) + "s state=" +
+                       narrow((directory / L"sequence.txt").wstring()) + " queue=" +
+                       narrow((directory / L"queue.jsonl").wstring()));
     Application application;
     application.interval_seconds = options.interval_seconds;
     application.worker = std::make_unique<CollectorWorker>(
@@ -285,6 +322,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     }
     application.worker->stop();
     g_application = nullptr;
+    diagnostics::write("collector exiting cleanly");
     CloseHandle(instance_mutex);
     return static_cast<int>(message.wParam);
 }
