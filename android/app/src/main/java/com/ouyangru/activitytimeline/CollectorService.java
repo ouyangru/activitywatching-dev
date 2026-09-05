@@ -12,6 +12,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
+import android.util.Log;
 
 /**
  * 前台采集服务：绕开国产 ROM 对纯后台 WorkManager 任务的冻结与限频。
@@ -20,6 +21,7 @@ import android.os.IBinder;
  */
 public final class CollectorService extends Service {
     static final String ACTION_START = "com.ouyangru.activitytimeline.START";
+    static final String LOG_TAG = "ActivityTimeline";
     private static final String CHANNEL_ID = "activity_timeline_collector";
     private static final int NOTIFICATION_ID = 1001;
     private static final long INTERVAL_MS = 60_000L;
@@ -44,6 +46,7 @@ public final class CollectorService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        Log.i(LOG_TAG, "service created");
         createChannel();
         Notification notification = buildNotification("正在记录前台应用");
         if (Build.VERSION.SDK_INT >= 34) {
@@ -71,6 +74,7 @@ public final class CollectorService extends Service {
 
     @Override
     public void onDestroy() {
+        Log.w(LOG_TAG, "service destroyed (system kill or user stop)");
         stopLoop();
         super.onDestroy();
     }
@@ -112,13 +116,16 @@ public final class CollectorService extends Service {
             );
             ApiClient.heartbeat(settings.serverUrl(), settings.apiToken(), settings.deviceId(this));
             updateNotification("待发送 " + pending + " 条 · " + upload.message);
+            Log.i(LOG_TAG, "cycle ok: collected=" + collected + " pending=" + pending + " upload=" + upload.message);
         } catch (SecurityException error) {
             settings.setRuntimeStatus("等待授予使用情况访问权限", false);
             updateNotification("等待使用情况访问权限");
+            Log.w(LOG_TAG, "usage stats permission missing", error);
         } catch (Exception error) {
             String message = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
             settings.setRuntimeStatus("前台采集失败：" + message, false);
             updateNotification("采集失败，将在下轮重试");
+            Log.e(LOG_TAG, "cycle failed: " + message, error);
         }
         if (worker != null) {
             worker.postDelayed(this::cycle, INTERVAL_MS);
