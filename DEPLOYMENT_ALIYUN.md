@@ -8,7 +8,22 @@
 
 后端通过 `activity-timeline.service` 开机启动，以独立系统用户运行，仅监听 127.0.0.1:8765。Nginx 提供 80/443 入口，HTTP 跳转 HTTPS；登录接口有频率限制。正式 IP 证书来自 Let's Encrypt，`activity-cert-renew.timer` 每天检查两次，续期成功后重载 Nginx。已通过模拟续期。
 
-运维命令（通过 SSH 登录后）：
+## 一键部署（推荐）
+
+代码以 GitHub `main` 分支为唯一事实源。日常发布流程：
+
+```bash
+# 本地提交后执行（Git Bash / Linux 均可）
+bash scripts/deploy-aliyun.sh
+```
+
+脚本会依次：检查工作树干净 -> `git push origin main` -> 服务器 `git reset --hard origin/main`（admin 用户）-> 安装依赖 -> 重启 `activity-timeline` 服务 -> 公网健康检查；健康检查失败会自动回滚到部署前版本并打印日志。数据库（`/var/lib/activity-timeline/activitywatch.db`）与生产令牌不受影响。
+
+前置条件：本地 GitHub SSH key 可用（remote 已是 `git@github.com:ouyangru/activitywatching-dev.git`）、可免密 SSH 登录 `root@47.82.104.59`。
+
+注意：服务器 `/opt/activity-timeline` 上的未提交改动会被覆盖——请始终在本地开发。2026-09-06 之前服务器上直接修改的工作已保全在服务器 `server-backup-20260906` 分支，其内容已合并进 `main`。
+
+## 运维命令（通过 SSH 登录后）：
 
 ```bash
 systemctl status activity-timeline nginx --no-pager
