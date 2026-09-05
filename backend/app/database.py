@@ -131,6 +131,24 @@ CREATE TABLE IF NOT EXISTS daily_summaries (
     model TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS agent_memory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL DEFAULT 'project_fact',
+    scope TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL DEFAULT '',
+    content TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'manual',
+    confidence REAL NOT NULL DEFAULT 1.0,
+    status TEXT NOT NULL DEFAULT 'active',
+    hit_count INTEGER NOT NULL DEFAULT 0,
+    last_seen_at TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_memory_scope
+ON agent_memory(scope, status);
 """
 
 
@@ -149,6 +167,7 @@ class Database:
             self._ensure_column(connection, "activity_segments", "platform", "TEXT NOT NULL DEFAULT 'windows'")
             self._ensure_column(connection, "activity_segments", "purpose", "TEXT NOT NULL DEFAULT '其他'")
             self._ensure_column(connection, "combined_segments", "topic", "TEXT NOT NULL DEFAULT ''")
+            self._ensure_column(connection, "classification_evidence", "hit_count", "INTEGER NOT NULL DEFAULT 0")
 
     @staticmethod
     def _ensure_column(
@@ -329,7 +348,14 @@ class Database:
             return updated
 
     def count(self, table: str) -> int:
-        if table not in {"feature_windows", "activity_segments", "user_corrections", "combined_segments", "classification_evidence"}:
+        if table not in {
+            "feature_windows",
+            "activity_segments",
+            "user_corrections",
+            "combined_segments",
+            "classification_evidence",
+            "agent_memory",
+        }:
             raise ValueError("unsupported table")
         with self.connect() as connection:
             return int(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
@@ -509,3 +535,102 @@ class Database:
             return connection.execute(
                 "SELECT * FROM daily_summaries WHERE day = ?", (day,)
             ).fetchone()
+
+    def bump_evidence_hits(self, digest: str) -> int:
+        """evidence 命中计数 +1（每个 digest 每天最多一次，由调用方去重）；返回当前值。"""
+        with self._write_lock, self.connect() as connection:
+            cursor = connection.execute(
+                "UPDATE classification_evidence SET hit_count = hit_count + 1 WHERE digest = ? AND revoked = 0",
+                (digest,),
+            )
+            if cursor.rowcount == 0:
+                return 0
+            row = connection.execute(
+                "SELECT hit_count FROM classification_evidence WHERE digest = ?", (digest,)
+            ).fetchone()
+            return int(row[0]) if row else 0
+
+    def add_memory(self, record: dict[str, Any]) -> int:
+        """新增一条长期记忆；kind/scope/source 由调用方约束，content 截断到 280 字符。"""
+        now = utc_iso(datetime.now(timezone.utc))
+        with self._write_lock, self.connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO agent_memory (
+                    kind, scope, category, content, source, confidence, status, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)
+                """,
+                (
+                    str(record.get("kind") or "project_fact")[:32],
+                    str(record.get("scope") or "").strip().lower()[:128],
+                    str(record.get("category") or "")[:16],
+                    str(record.get("content") or "").strip()[:280],
+                    str(record.get("source") or "manual")[:16],
+                    max(0.0, min(1.0, float(record.get("confidence", 1.0)))),
+                    now,
+                    now,
+                ),
+            )
+            return int(cursor.lastrowid or 0)
+
+    def memory_for(self, scope: str) -> list[sqlite3.Row]:
+        """按进程名/主题精确匹配取 active 记忆（大小写不敏感）。"""
+        key = (scope or "").strip().lower()
+        if not key:
+            return []
+        with self.connect() as connection:
+            return list(
+                connection.execute(
+                    """
+                    SELECT * FROM agent_memory
+                    WHERE scope = ? AND status = 'active'
+                    ORDER BY confidence DESC, id DESC
+                    LIMIT 20
+                    """,
+                    (key,),
+                )
+            )
+
+    def active_memories(self) -> list[sqlite3.Row]:
+        with self.connect() as connection:
+            return list(
+                connection.execute(
+                    "SELECT * FROM agent_memory WHERE status = 'active' ORDER BY kind, id DESC LIMIT 50"
+                )
+            )
+
+    def list_memories(self) -> list[sqlite3.Row]:
+        with self.connect() as connection:
+            return list(
+                connection.execute(
+                    "SELECT * FROM agent_memory ORDER BY status ASC, id DESC LIMIT 200"
+                )
+            )
+
+    def delete_memory(self, memory_id: int) -> bool:
+        with self._write_lock, self.connect() as connection:
+            cursor = connection.execute("DELETE FROM agent_memory WHERE id = ?", (memory_id,))
+            return cursor.rowcount == 1
+
+    def supersede_memories(self, scope: str, kind: str, keep_category: str) -> int:
+        """同 scope 同 kind 且 category 不同的旧记忆标记 superseded（新纠正永远赢，旧的归档可追溯）。"""
+        with self._write_lock, self.connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE agent_memory SET status = 'superseded', updated_at = ?
+                WHERE scope = ? AND kind = ? AND status = 'active' AND category != ?
+                """,
+                (utc_iso(datetime.now(timezone.utc)), (scope or "").strip().lower(), kind, keep_category or ""),
+            )
+            return cursor.rowcount
+
+    def touch_memories(self, memory_ids: list[int]) -> None:
+        """记忆被注入 prompt 时更新命中计数与最后使用时间。"""
+        if not memory_ids:
+            return
+        now = utc_iso(datetime.now(timezone.utc))
+        with self._write_lock, self.connect() as connection:
+            connection.executemany(
+                "UPDATE agent_memory SET hit_count = hit_count + 1, last_seen_at = ? WHERE id = ?",
+                [(now, memory_id) for memory_id in memory_ids],
+            )

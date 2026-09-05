@@ -9,12 +9,12 @@
 from __future__ import annotations
 
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from .agent import SUMMARY_SYSTEM_PROMPT, AgentService, LLMClient
-from .database import Database
+from .database import Database, utc_iso
 
 
 class DailySummarizer:
@@ -84,7 +84,13 @@ class DailySummarizer:
         """同步生成并落盘；失败返回 None（daily/report 无感回退纯统计）。"""
         if self.llm is None:
             return None
-        prompt = _build_prompt(day, payload, self.timezone)
+        prompt = _build_prompt(
+            day,
+            payload,
+            self.timezone,
+            memory_context=self._memory_context(),
+            week_context=self._week_context(day),
+        )
         raw = self.llm(SUMMARY_SYSTEM_PROMPT, prompt)
         if not raw:
             return None
@@ -98,8 +104,51 @@ class DailySummarizer:
         """手动触发同步重生成（测试/演示用）。"""
         return self.generate(day, version, payload)
 
+    # ------------------------------------------------------------------
+    # 长期记忆与近几天趋势（脱敏，直接来自本地数据库）
+    # ------------------------------------------------------------------
+    def _memory_context(self) -> str:
+        memories = self.database.active_memories()
+        if not memories:
+            return ""
+        lines = [f"  [{row['kind']}] {row['scope']}: {row['content']}" for row in memories[:20]]
+        return "\n".join(lines)
 
-def _build_prompt(day: str, payload: dict[str, Any], timezone: ZoneInfo) -> str:
+    def _week_context(self, day: str) -> str:
+        """前 6 天各分类小时数（粗略求和，仅作趋势参考）。"""
+        try:
+            base = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=self.timezone)
+        except ValueError:
+            return ""
+        lines: list[str] = []
+        for offset in range(6, 0, -1):
+            local_start = base - timedelta(days=offset)
+            start = local_start.astimezone(timezone.utc)
+            end = (local_start + timedelta(days=1)).astimezone(timezone.utc)
+            rows = self.database.rows_between("activity_segments", utc_iso(start), utc_iso(end), None)
+            totals: dict[str, float] = {}
+            for row in rows:
+                begin = datetime.fromisoformat(str(row["start_time"]).replace("Z", "+00:00"))
+                finish = datetime.fromisoformat(str(row["end_time"]).replace("Z", "+00:00"))
+                totals[row["category"]] = totals.get(row["category"], 0.0) + max(
+                    0.0, (finish - begin).total_seconds()
+                )
+            if totals:
+                parts = "、".join(
+                    f"{category}{round(seconds / 3600, 1)}h"
+                    for category, seconds in sorted(totals.items(), key=lambda kv: -kv[1])
+                )
+                lines.append(f"  {local_start.date().isoformat()}：{parts}")
+        return "\n".join(lines)
+
+
+def _build_prompt(
+    day: str,
+    payload: dict[str, Any],
+    timezone: ZoneInfo,
+    memory_context: str = "",
+    week_context: str = "",
+) -> str:
     """把日报 payload 压缩成脱敏 prompt：不带标题原文，时间折算成当天小时。"""
     lines: list[str] = [f"日期：{day}", "分类时长（秒）："]
     for item in payload.get("summary", []):
@@ -141,4 +190,10 @@ def _build_prompt(day: str, payload: dict[str, Any], timezone: ZoneInfo) -> str:
         lines.append(f"打断：共 {switches.get('interruptions')} 次，主要来源：{sources}")
     else:
         lines.append("打断：无")
+    if memory_context:
+        lines.append("长期记忆（用户事实，判断时优先参考）：")
+        lines.append(memory_context)
+    if week_context:
+        lines.append("近几天分类时长：")
+        lines.append(week_context)
     return "\n".join(lines)

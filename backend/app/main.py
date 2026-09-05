@@ -18,7 +18,7 @@ from .agent import AgentService
 from .analyzer import ActivityAnalyzer, build_insights, serialize_segment
 from .database import Database, utc_iso
 from .merger import combine_segments
-from .schemas import BatchRequest, HeartbeatRequest, SegmentCorrection
+from .schemas import AgentMemoryRequest, BatchRequest, HeartbeatRequest, SegmentCorrection
 from .summarizer import DailySummarizer
 
 
@@ -395,6 +395,16 @@ def create_app(
             "combined_segments": combined_segments,
             "insights": insights,
             "narrative": narrative,
+            "memories": [
+                {
+                    "kind": row["kind"],
+                    "scope": row["scope"],
+                    "content": row["content"],
+                    "source": row["source"],
+                    "hit_count": row["hit_count"],
+                }
+                for row in database.active_memories()
+            ],
         }
 
     @application.get("/api/v1/devices")
@@ -432,6 +442,27 @@ def create_app(
         updated = database.correct_segment(segment_id, correction.category, correction.purpose)
         if updated is None:
             raise HTTPException(status_code=404, detail="segment not found or empty correction")
+        # 「以后都这样」：从单次纠正归纳出该应用的一般性记忆（新纠正永远赢，旧的 superseded）
+        if correction.remember:
+            process = (updated.get("process") or "").strip()
+            if process:
+                category = correction.category or updated["category"]
+                content = f"用户纠正：{process} 的活动应归类为「{category}」"
+                if correction.purpose:
+                    content += f"（目的：{correction.purpose}）"
+                if correction.memory_note:
+                    content += f"。备注：{correction.memory_note}"
+                database.supersede_memories(process, "correction", category)
+                database.add_memory(
+                    {
+                        "kind": "correction",
+                        "scope": process,
+                        "category": category,
+                        "content": content,
+                        "source": "correction",
+                        "confidence": 1.0,
+                    }
+                )
         return {"segment": serialize_segment(updated, analyzer.timezone)}
 
     @application.post("/api/v1/heartbeat")
@@ -448,6 +479,7 @@ def create_app(
             "model": agent.model_name if agent.enabled else None,
             "confidence_threshold": agent.confidence_threshold,
             "evidence_count": database.count("classification_evidence"),
+            "memory_count": database.count("agent_memory"),
         }
 
     @application.post("/api/v1/agent/enrich")
@@ -490,6 +522,52 @@ def create_app(
         }
         narrative = summarizer.refresh(day, summarizer.version_for(rows), payload)
         return {"day": day, "narrative": narrative, "source": "agent" if narrative else None}
+
+    @application.get("/api/v1/agent/memory")
+    def agent_memory_list(_: None = Depends(require_auth)) -> dict[str, Any]:
+        """长期记忆透明展示：全部记忆（含 superseded/stale，按状态分组）。"""
+        memories = [
+            {
+                "id": row["id"],
+                "kind": row["kind"],
+                "scope": row["scope"],
+                "category": row["category"],
+                "content": row["content"],
+                "source": row["source"],
+                "confidence": round(float(row["confidence"]), 2),
+                "status": row["status"],
+                "hit_count": row["hit_count"],
+                "last_seen_at": row["last_seen_at"],
+                "created_at": row["created_at"],
+            }
+            for row in database.list_memories()
+        ]
+        return {
+            "active": [item for item in memories if item["status"] == "active"],
+            "archived": [item for item in memories if item["status"] != "active"],
+        }
+
+    @application.post("/api/v1/agent/memory")
+    def agent_memory_add(payload: AgentMemoryRequest, _: None = Depends(require_auth)) -> dict[str, Any]:
+        """手动添加长期记忆（如"我最近在赶毕业设计 mini-nccl"）。"""
+        memory_id = database.add_memory(
+            {
+                "kind": payload.kind,
+                "scope": payload.scope,
+                "category": "",
+                "content": payload.content,
+                "source": "manual",
+                "confidence": payload.confidence,
+            }
+        )
+        return {"id": memory_id, "scope": payload.scope.lower(), "content": payload.content}
+
+    @application.delete("/api/v1/agent/memory/{memory_id}")
+    def agent_memory_delete(memory_id: int, _: None = Depends(require_auth)) -> dict[str, Any]:
+        """删除单条记忆（隐私：记忆可导出、可单删、可清空重建）。"""
+        if not database.delete_memory(memory_id):
+            raise HTTPException(status_code=404, detail="memory not found")
+        return {"id": memory_id, "deleted": True}
 
     application.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 

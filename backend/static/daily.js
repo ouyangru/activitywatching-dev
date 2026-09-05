@@ -197,6 +197,29 @@ function renderRankings(report) {
     : `<li class="ranking-empty">当天没有记录到短暂打断</li>`;
 }
 
+const MEMORY_SOURCE_LABELS = {
+  manual: "手动",
+  correction: "纠正",
+  auto: "自动",
+};
+
+function renderMemories(report) {
+  const panel = document.getElementById("memoryPanel");
+  const list = document.getElementById("agentMemoryList");
+  const memories = report.memories || [];
+  if (!memories.length) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+  list.innerHTML = memories.map((memory) => `
+    <li class="ranking-row" title="${escapeHtml(memory.content)}">
+      <span class="ranking-name">${escapeHtml(memory.scope)}</span>
+      <span class="reason-chip">${MEMORY_SOURCE_LABELS[memory.source] || memory.source}${memory.hit_count ? ` · ${memory.hit_count}次` : ""}</span>
+      <b class="ranking-value">${escapeHtml(memory.content)}</b>
+    </li>`).join("");
+}
+
 async function loadReport() {
   const input = document.getElementById("dayInput");
   input.value = currentDay;
@@ -212,6 +235,7 @@ async function loadReport() {
     renderMainTimeline(report.combined_segments || []);
     renderDistribution();
     renderRankings(report);
+    renderMemories(report);
     document.querySelector(".live-pill").classList.remove("offline");
     document.getElementById("connectionLabel").textContent = "服务已连接";
   } catch (error) {

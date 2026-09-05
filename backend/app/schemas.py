@@ -49,6 +49,8 @@ class BatchRequest(BaseModel):
 class SegmentCorrection(BaseModel):
     category: Literal["学习", "工作", "娱乐", "空闲", "其他"] | None = None
     purpose: str | None = Field(default=None, min_length=1, max_length=32)
+    remember: bool = False
+    memory_note: str | None = Field(default=None, max_length=280)
 
     @model_validator(mode="after")
     def require_at_least_one(self) -> "SegmentCorrection":
@@ -61,3 +63,12 @@ class HeartbeatRequest(BaseModel):
     device_id: str = Field(min_length=1, max_length=128)
     platform: Literal["windows", "android"] = "windows"
     collector_version: str = Field(default="", max_length=64)
+
+
+class AgentMemoryRequest(BaseModel):
+    """手动添加长期记忆（如"我最近在赶毕业设计 mini-nccl"）。"""
+
+    kind: Literal["app_fact", "project_fact", "correction", "pattern"] = "project_fact"
+    scope: str = Field(min_length=1, max_length=128)
+    content: str = Field(min_length=1, max_length=280)
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)

@@ -41,9 +41,13 @@ TITLE_MAX_CHARS = 80
 CONFIDENCE_THRESHOLD = 0.55
 MAX_DIGESTS_PER_CALL = 20
 LLM_TIMEOUT_SECONDS = 45
+AUTO_PROMOTE_HITS = 5
+AUTO_PROMOTE_CONFIDENCE = 0.75
 
 CLASSIFY_SYSTEM_PROMPT = """你是一个本机活动追踪系统的行为判定助手。
 输入是若干条"脱敏活动片段摘要"：进程名、窗口标题摘要、分钟级交互频率。
+部分条目附带 known_facts：系统长期记忆中关于该应用的用户事实（来自人工纠正或多次验证），
+判断时应优先参考 known_facts；与片段特征矛盾时以 known_facts 为准。
 请为每一条判断：用户当时最可能在做什么（behavior，如 编程/阅读文档/看视频/聊天/浏览资讯），
 这件事的目的（purpose，只能是 学习/工作/娱乐/生活事务/其他 之一），
 对应的粗分类（category，只能是 学习/工作/娱乐/空闲/其他 之一），
@@ -56,7 +60,9 @@ CLASSIFY_SYSTEM_PROMPT = """你是一个本机活动追踪系统的行为判定�
 
 SUMMARY_SYSTEM_PROMPT = """你是一个本机活动追踪系统的日报助手。
 输入是某一天的脱敏统计：各分类时长、跨设备主活动片段序列（小时、时长、分类、行为、目的、主题、应用名）、
-应用排行、专注情况、打断统计。请写一份 200 字以内的中文日报，回答：
+应用排行、专注情况、打断统计，可能还包含「长期记忆」（用户事实与项目背景，判断时优先参考）
+与「近几天分类时长」（用于趋势对比，可提及但不要编造数字）。
+请写一份 200 字以内的中文日报，回答：
 1. 今天时间主要花在哪里；
 2. 主要完成了什么、被什么打断；
 3. 哪些记录置信度较低、建议人工确认。
@@ -167,6 +173,8 @@ class AgentService:
         self._pending: set[str] = set()
         self._pending_lock = threading.Lock()
         self._worker_started = False
+        # 每个 (digest, day) 只累计一次命中，防止重复触发沉淀
+        self._hit_bumped: set[tuple[str, str]] = set()
 
     # ------------------------------------------------------------------
     # 异步触发（写路径只投递，不等待）
@@ -236,6 +244,7 @@ class AgentService:
             return {"enabled": 1, "candidates": 0, "new": 0}
 
         known = self.database.evidence_map(list(candidates))
+        self._promote_from_evidence(known, day)
         pending = [item for digest, item in candidates.items() if digest not in known]
         created = 0
         for chunk_start in range(0, len(pending), MAX_DIGESTS_PER_CALL):
@@ -243,7 +252,45 @@ class AgentService:
             created += self._classify_chunk(chunk)
         return {"enabled": 1, "candidates": len(candidates), "new": created}
 
+    def _promote_from_evidence(self, evidence: dict[str, Any], day: str) -> None:
+        """高置信判断重复出现后自动沉淀为长期记忆（app_fact，source=auto）。"""
+        for digest, row in evidence.items():
+            if (digest, day) in self._hit_bumped:
+                continue
+            self._hit_bumped.add((digest, day))
+            hits = self.database.bump_evidence_hits(digest)
+            if hits < AUTO_PROMOTE_HITS or float(row["confidence"]) < AUTO_PROMOTE_CONFIDENCE:
+                continue
+            scope = (row["process"] or "").strip().lower()
+            if not scope:
+                continue
+            content = (
+                f"{row['process']} 常见行为：{row['behavior']}（主题：{row['topic']}），目的多为「{row['purpose']}」"
+            )
+            if any(item["source"] == "auto" and item["content"] == content for item in self.database.memory_for(scope)):
+                continue
+            self.database.add_memory(
+                {
+                    "kind": "app_fact",
+                    "scope": scope,
+                    "category": row["category"],
+                    "content": content,
+                    "source": "auto",
+                    "confidence": float(row["confidence"]),
+                }
+            )
+
     def _classify_chunk(self, chunk: list[dict[str, Any]]) -> int:
+        # 注入该应用相关的长期记忆（用户纠正 > 自动沉淀），并记录命中
+        touched: list[int] = []
+        for item in chunk:
+            memories = self.database.memory_for(item.get("process") or "")
+            if not memories:
+                continue
+            item["known_facts"] = [row["content"] for row in memories[:5]]
+            touched.extend(row["id"] for row in memories[:5])
+        if touched:
+            self.database.touch_memories(touched)
         user_prompt = json.dumps(chunk, ensure_ascii=False)
         raw = self.llm(CLASSIFY_SYSTEM_PROMPT, user_prompt) if self.llm else None
         if not raw:

@@ -20,6 +20,21 @@ from backend.app.agent import AgentService, evidence_digest, sanitize_title
 from backend.app.main import create_app
 from tests.conftest import event
 
+AGENT_ENV_KEYS = (
+    "ACTIVITYWATCH_AGENT_BASE_URL",
+    "ACTIVITYWATCH_AGENT_API_KEY",
+    "ACTIVITYWATCH_AGENT_MODEL",
+    "ACTIVITYWATCH_AGENT_ENABLED",
+)
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_agent_env(monkeypatch):
+    """隔离本地 backend/.env：测试的"未配置"场景不受开发机真实 Key 影响。"""
+    for key in AGENT_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    yield
+
 
 
 def seg_by_process(segments, process):
@@ -250,3 +265,155 @@ def test_daily_summary_llm_failure_returns_none(agent_client):
     report = client.get("/api/v1/daily/report?day=2026-09-05").json()
     assert report["narrative"] is None
     assert "summary" in report and "insights" in report
+
+
+# ----------------------------------------------------------------------
+# 长期记忆（agent_memory）
+# ----------------------------------------------------------------------
+
+
+def test_correction_remember_creates_and_supersedes_memory(agent_client):
+    client, fake, database = agent_client
+    client.post(
+        "/api/v1/events/batch",
+        json={"events": [event(1, "2026-09-05T10:00:00Z", process="Obsidian.exe", title="笔记 - 标题", duration_ms=60_000)]},
+    )
+    segment_id = seg_by_process(client.get("/api/v1/timeline/today?day=2026-09-05").json()["segments"], "Obsidian.exe")["id"]
+
+    # 修正 + 「以后都这样」→ 归纳出泛化记忆
+    client.patch(
+        f"/api/v1/segments/{segment_id}",
+        json={"category": "工作", "purpose": "写文档", "remember": True, "memory_note": "上班用它写周报"},
+    )
+    memories = client.get("/api/v1/agent/memory").json()
+    assert len(memories["active"]) == 1
+    memory = memories["active"][0]
+    assert memory["scope"] == "obsidian.exe"
+    assert memory["kind"] == "correction"
+    assert memory["source"] == "correction"
+    assert "工作" in memory["content"]
+    assert "周报" in memory["content"]
+
+    # 同一应用再次纠正为不同分类 → 新纠正永远赢，旧的 superseded（归档不删除）
+    client.patch(
+        f"/api/v1/segments/{segment_id}",
+        json={"category": "学习", "remember": True},
+    )
+    memories = client.get("/api/v1/agent/memory").json()
+    assert len(memories["active"]) == 1
+    assert memories["active"][0]["category"] == "学习"
+    assert len(memories["archived"]) == 1
+    assert memories["archived"][0]["category"] == "工作"
+
+
+def test_memory_manual_add_list_delete(agent_client):
+    client, fake, database = agent_client
+    created = client.post(
+        "/api/v1/agent/memory",
+        json={"kind": "project_fact", "scope": "mini-nccl", "content": "mini-nccl 是我的毕业设计项目，相关活动算学习"},
+    ).json()
+    assert created["scope"] == "mini-nccl"
+
+    memories = client.get("/api/v1/agent/memory").json()
+    assert [item["scope"] for item in memories["active"]] == ["mini-nccl"]
+    assert memories["active"][0]["source"] == "manual"
+
+    deleted = client.delete(f"/api/v1/agent/memory/{created['id']}")
+    assert deleted.status_code == 200
+    assert client.get("/api/v1/agent/memory").json()["active"] == []
+    assert client.delete(f"/api/v1/agent/memory/{created['id']}").status_code == 404
+
+
+def test_memory_injected_into_classify_prompt(agent_client):
+    client, fake, database = agent_client
+    client.post(
+        "/api/v1/agent/memory",
+        json={"kind": "correction", "scope": "Obsidian.exe", "content": "用户纠正：Obsidian.exe 的活动应归类为「学习」（写笔记）"},
+    )
+    client.post(
+        "/api/v1/events/batch",
+        json={"events": [event(1, "2026-09-05T10:00:00Z", process="Obsidian.exe", title="其他 - 标题", duration_ms=60_000)]},
+    )
+    client.post("/api/v1/agent/enrich", json={"day": "2026-09-05"})
+
+    # 发给模型的条目里附带 known_facts，判断参考长期记忆
+    classify_prompt = next(p for p in fake.user_prompts if "known_facts" in p or "digest" in p)
+    assert "known_facts" in classify_prompt
+    assert "应归类为「学习」" in classify_prompt
+
+    # 注入后记忆命中计数更新
+    memory = client.get("/api/v1/agent/memory").json()["active"][0]
+    assert memory["hit_count"] >= 1
+    assert memory["last_seen_at"]
+
+
+def test_auto_promotion_after_repeated_hits(agent_client):
+    client, fake, database = agent_client
+    client.post(
+        "/api/v1/events/batch",
+        json={"events": [event(1, "2026-09-05T10:00:00Z", process="Obsidian.exe", title="笔记 - 标题", duration_ms=60_000)]},
+    )
+    digest = evidence_digest("windows", "Obsidian.exe", "笔记 - 标题")
+    fake.judgments = [
+        {"digest": digest, "behavior": "写作", "purpose": "学习", "category": "学习",
+         "topic": "笔记", "description": "写笔记", "confidence": 0.9, "explanation": "ok"}
+    ]
+    client.post("/api/v1/agent/enrich", json={"day": "2026-09-05"})
+    assert client.get("/api/v1/agent/status").json()["evidence_count"] == 1
+    # 阈值未到：还没沉淀
+    assert client.get("/api/v1/agent/memory").json()["active"] == []
+
+    # 累计命中到 4 次，再 enrich 一次 → 第 5 次触发自动沉淀
+    while database.bump_evidence_hits(digest) < 4:
+        pass
+    fresh = AgentService(database, "Asia/Shanghai", llm=fake, model_name="fake")
+    fresh.enrich_day("2026-09-05")
+
+    memories = client.get("/api/v1/agent/memory").json()["active"]
+    promoted = next(item for item in memories if item["scope"] == "obsidian.exe")
+    assert promoted["source"] == "auto"
+    assert promoted["kind"] == "app_fact"
+    assert "写作" in promoted["content"]
+
+
+def test_summary_prompt_includes_memory_and_week_context(agent_client):
+    client, fake, database = agent_client
+    client.post(
+        "/api/v1/agent/memory",
+        json={"kind": "project_fact", "scope": "mini-nccl", "content": "mini-nccl 是我的毕业设计项目，相关活动算学习"},
+    )
+    fake.narrative = "今天主要在推进毕业设计。"
+    client.post(
+        "/api/v1/events/batch",
+        json={"events": [event(1, "2026-09-05T10:00:00Z", process="Code.exe", title="mini-nccl - Visual Studio Code", duration_ms=120_000)]},
+    )
+    client.post("/api/v1/agent/summary/2026-09-05")
+
+    summary_prompt = next(p for p in fake.user_prompts if "长期记忆" in p or "近几天" in p)
+    assert "长期记忆" in summary_prompt
+    assert "毕业设计项目" in summary_prompt
+
+    # 日报接口带出记忆（/daily 页面透明展示）
+    report = client.get("/api/v1/daily/report?day=2026-09-05").json()
+    assert [item["scope"] for item in report["memories"]] == ["mini-nccl"]
+
+
+def test_memory_endpoints_work_when_agent_disabled(tmp_path: Path):
+    """Agent 未配置：记忆管理仍可用（纯本地数据库操作），核心接口不受影响。"""
+    app = create_app(
+        db_path=tmp_path / "test.db",
+        rules_path=Path(__file__).parents[1] / "backend" / "config" / "rules.yaml",
+        timezone_name="Asia/Shanghai",
+        api_token="",
+    )
+    with TestClient(app) as client:
+        client.post(
+            "/api/v1/events/batch",
+            json={"events": [event(1, "2026-09-05T10:00:00Z", process="Code.exe", title="mini-nccl - Visual Studio Code")]},
+        )
+        client.post("/api/v1/agent/memory", json={"scope": "code.exe", "content": "写代码用的"})
+        report = client.get("/api/v1/daily/report?day=2026-09-05").json()
+        assert len(report["memories"]) == 1
+        status = client.get("/api/v1/agent/status").json()
+        assert status["enabled"] is False
+        assert status["memory_count"] == 1
