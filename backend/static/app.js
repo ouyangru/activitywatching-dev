@@ -36,6 +36,10 @@ function formatDuration(seconds) {
   return hours ? `${hours} 小时 ${minutes} 分钟` : `${minutes} 分钟`;
 }
 
+function formatTrackedHours(seconds) {
+  return `${(seconds / 3600).toFixed(1)} 小时`;
+}
+
 function escapeHtml(value) {
   const node = document.createElement("div");
   node.textContent = String(value ?? "");
@@ -159,7 +163,7 @@ function renderChart(items) {
       style: { text: visible.length ? "今日" : "等待数据", fill: "#91a49e", font: "12px Segoe UI" },
     }, {
       type: "text", left: "center", top: "51%",
-      style: { text: visible.length ? `${Math.round(items.reduce((sum, item) => sum + item.seconds, 0) / 60)} min` : "—", fill: "#eff7f2", font: "600 20px Segoe UI", textAlign: "center" },
+      style: { text: visible.length ? formatTrackedHours(items.reduce((sum, item) => sum + item.seconds, 0)) : "—", fill: "#eff7f2", font: "600 20px Segoe UI", textAlign: "center" },
     }],
   });
 }
@@ -280,7 +284,7 @@ async function loadDashboard(showSuccess = false) {
       renderTimeStack(segments);
     }
     document.getElementById("segmentCount").textContent = segments.length;
-    document.getElementById("trackedTime").textContent = formatDuration(summary.total_seconds);
+    document.getElementById("trackedTime").textContent = formatTrackedHours(summary.total_seconds);
     document.getElementById("trackedLabel").textContent = selectedDevice ? "该设备覆盖时长" : "设备与无设备时长";
     const focus = summary.categories.filter((item) => item.category === "学习" || item.category === "工作").reduce((sum, item) => sum + item.seconds, 0);
     document.getElementById("focusRate").textContent = summary.total_seconds ? `${Math.round(focus * 100 / summary.total_seconds)}%` : "0%";
