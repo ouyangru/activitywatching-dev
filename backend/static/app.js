@@ -2,16 +2,21 @@ const CATEGORY_COLORS = {
   "学习": "#6fe0a3",
   "工作": "#6ba7ff",
   "娱乐": "#f3b562",
-  "空闲": "#8a929d",
+  "空闲": "#e07a72",
   "其他": "#b88cff",
+  "无设备记录": "#4b5563",
 };
 const CATEGORIES = Object.keys(CATEGORY_COLORS);
+const EDITABLE_CATEGORIES = CATEGORIES.filter((category) => category !== "无设备记录");
 let chartInstance = null;
 let timeStackChartInstance = null;
 let selectedDevice = "";
+let timelineOrder = "desc";
 
 function platformLabel(platform) {
-  return platform === "android" ? "Android" : "Windows";
+  if (platform === "android") return "Android";
+  if (platform === "windows") return "Windows";
+  return "无设备";
 }
 
 function withDevice(path) {
@@ -51,9 +56,14 @@ function renderTimeline(segments) {
     return;
   }
 
-  target.innerHTML = segments.map((segment) => {
+  const orderedSegments = [...segments].sort((left, right) => {
+    const direction = timelineOrder === "desc" ? -1 : 1;
+    return direction * (new Date(left.start_time) - new Date(right.start_time));
+  });
+
+  target.innerHTML = orderedSegments.map((segment) => {
     const color = CATEGORY_COLORS[segment.category] || CATEGORY_COLORS["其他"];
-    const options = CATEGORIES.map((category) =>
+    const options = EDITABLE_CATEGORIES.map((category) =>
       `<option value="${category}" ${category === segment.category ? "selected" : ""}>${category}</option>`
     ).join("");
     const interruption = segment.interruptions.length ? ` · ${segment.interruptions.length} 次短暂打断` : "";
@@ -65,14 +75,14 @@ function renderTimeline(segments) {
         <div class="timeline-card">
           <div class="timeline-title">
             <span class="category-badge">${escapeHtml(segment.category)}</span>
-            <span class="platform-badge">${platformLabel(segment.platform)}</span>
+            <span class="platform-badge">${platformLabel(segment.platform)}${segment.device_id ? ` · ${escapeHtml(segment.device_id)}` : ""}</span>
             <strong>${escapeHtml(segment.behavior)}</strong>
           </div>
           <p class="timeline-description">${escapeHtml(segment.description)}</p>
           <div class="timeline-details">
             <span>${formatClock(segment.start_time_local)}—${formatClock(segment.end_time_local)}</span>
             <span>${formatDuration(segment.duration_seconds)}${interruption}${manual}</span>
-            <select class="edit-category" data-segment-id="${segment.id}" aria-label="修改 ${escapeHtml(segment.behavior)} 的分类">${options}</select>
+            ${segment.id === null ? "" : `<select class="edit-category" data-segment-id="${segment.id}" aria-label="修改 ${escapeHtml(segment.behavior)} 的分类">${options}</select>`}
           </div>
         </div>
       </article>`;
@@ -97,6 +107,7 @@ function renderTimeline(segments) {
     });
     select.dataset.previous = select.value;
   });
+  target.scrollTop = 0;
 }
 
 async function loadDevices() {
@@ -105,7 +116,7 @@ async function loadDevices() {
   const { devices } = await response.json();
   const select = document.getElementById("deviceFilter");
   const current = selectedDevice;
-  select.innerHTML = `<option value="">全部设备（时长可能重叠）</option>` + devices.map((device) =>
+  select.innerHTML = `<option value="">全部设备</option>` + devices.map((device) =>
     `<option value="${escapeHtml(device.device_id)}">${platformLabel(device.platform)} · ${escapeHtml(device.device_id)}</option>`
   ).join("");
   if ([...select.options].some((option) => option.value === current)) select.value = current;
@@ -252,6 +263,7 @@ async function loadDashboard(showSuccess = false) {
   button.disabled = true;
   button.textContent = "刷新中…";
   try {
+    await loadDevices();
     const [timelineResponse, summaryResponse] = await Promise.all([
       fetch(withDevice("/api/v1/timeline/today")),
       fetch(withDevice("/api/v1/summary/today")),
@@ -269,7 +281,7 @@ async function loadDashboard(showSuccess = false) {
     }
     document.getElementById("segmentCount").textContent = segments.length;
     document.getElementById("trackedTime").textContent = formatDuration(summary.total_seconds);
-    document.getElementById("trackedLabel").textContent = selectedDevice ? "该设备已记录" : "已记录设备时长";
+    document.getElementById("trackedLabel").textContent = selectedDevice ? "该设备覆盖时长" : "设备与无设备时长";
     const focus = summary.categories.filter((item) => item.category === "学习" || item.category === "工作").reduce((sum, item) => sum + item.seconds, 0);
     document.getElementById("focusRate").textContent = summary.total_seconds ? `${Math.round(focus * 100 / summary.total_seconds)}%` : "0%";
 
@@ -299,11 +311,15 @@ document.getElementById("deviceFilter").addEventListener("change", (event) => {
   selectedDevice = event.target.value;
   loadDashboard(false);
 });
+document.getElementById("timelineOrder").addEventListener("change", (event) => {
+  timelineOrder = event.target.value;
+  renderTimeline(window.timelineSegments || []);
+});
 window.addEventListener("resize", () => chartInstance?.resize());
 window.addEventListener("resize", () => timeStackChartInstance?.resize());
 document.querySelector(".view-switch")?.addEventListener("click", (event) => {
   const button = event.target.closest(".view-switch-button");
   if (button) setDistributionView(button.dataset.view);
 });
-loadDevices().catch(() => {}).finally(() => loadDashboard());
+loadDashboard();
 window.setInterval(() => loadDashboard(false), 30_000);

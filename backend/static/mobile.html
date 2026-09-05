@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07100f">
+  <meta name="robots" content="noindex, nofollow">
+  <title>行迹 · 当前状态</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2310201e'/%3E%3Cpath d='M18 40V29M32 40V17M46 40V24' stroke='%2391e5b6' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/mobile.css?v=20260905-1">
+</head>
+<body>
+  <main class="mobile-shell">
+    <header>
+      <a class="brand" href="/">行迹</a>
+      <span id="connection" class="connection"><i></i><b>正在连接</b></span>
+    </header>
+
+    <section id="statusCard" class="status-card" aria-live="polite">
+      <p class="eyebrow">CURRENT STATUS · 当前状态</p>
+      <div class="pulse" aria-hidden="true"><span></span></div>
+      <p id="stateLabel" class="state-label">等待状态数据</p>
+      <h1 id="statusTitle">正在读取…</h1>
+      <p id="statusDescription" class="description">页面会每 10 秒自动更新。</p>
+      <dl class="facts">
+        <div><dt>设备</dt><dd id="device">—</dd></div>
+        <div><dt>行为</dt><dd id="behavior">—</dd></div>
+        <div><dt>开始于</dt><dd id="startedAt">—</dd></div>
+        <div><dt>更新于</dt><dd id="updatedAt">—</dd></div>
+      </dl>
+    </section>
+
+    <button id="refresh" type="button">立即刷新</button>
+    <p class="privacy">此页面只读取行为摘要，不包含按键内容、剪贴板原文或屏幕画面。</p>
+  </main>
+  <script src="/static/mobile.js?v=20260905-1" defer></script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+@rem Gradle startup script for Windows
+@echo off
+setlocal
+set DIRNAME=%~dp0
+if defined JAVA_HOME goto findJavaFromJavaHome
+set JAVA_EXE=java.exe
+%JAVA_EXE% -version >NUL 2>&1
+if %ERRORLEVEL% equ 0 goto execute
+echo JAVA_HOME is not set and java.exe was not found on PATH. 1>&2
+exit /b 1
+
+:findJavaFromJavaHome
+set JAVA_EXE=%JAVA_HOME%\bin\java.exe
+if exist "%JAVA_EXE%" goto execute
+echo JAVA_HOME does not point to a valid JDK: %JAVA_HOME% 1>&2
+exit /b 1
+
+:execute
+"%JAVA_EXE%" -Xmx64m -Xms64m -classpath "%DIRNAME%gradle\wrapper\gradle-wrapper.jar" org.gradle.wrapper.GradleWrapperMain %*
+endlocal

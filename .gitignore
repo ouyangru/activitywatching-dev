@@ -10,4 +10,8 @@ collector/build/
 collector/out/
 .idea/
 .vscode/
-
+android/.gradle/
+android/local.properties
+android/app/build/
+android/build/
+*.apk

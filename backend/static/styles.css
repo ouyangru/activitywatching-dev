@@ -11,7 +11,8 @@
   --study: #6fe0a3;
   --work: #6ba7ff;
   --play: #f3b562;
-  --idle: #8a929d;
+  --idle: #e07a72;
+  --no-device: #4b5563;
   --other: #b88cff;
   --shadow: 0 24px 80px rgba(0, 0, 0, 0.32);
 }
@@ -101,10 +102,11 @@ h1 { margin: 0; font-size: clamp(30px, 4.2vw, 52px); line-height: 1.13; letter-s
 }
 .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 27px; }
 .panel-heading h2 { margin: 0; font-size: 22px; letter-spacing: -.025em; }
-.timeline-actions { display: flex; align-items: center; gap: 9px; }
+.timeline-actions { display: flex; align-items: center; gap: 8px; }
 .device-filter-label { color: var(--muted); font-size: 11px; }
-.device-filter { max-width: 210px; color: #b7c8c1; background: rgba(255,255,255,.025); border: 1px solid var(--line); border-radius: 10px; padding: 9px 30px 9px 11px; }
-.ghost-button { color: #b7c8c1; background: rgba(255,255,255,.025); border: 1px solid var(--line); border-radius: 10px; padding: 9px 13px; cursor: pointer; transition: .2s ease; }
+.device-filter { width: 150px; max-width: 150px; height: 34px; color: #b7c8c1; background: rgba(255,255,255,.025); border: 1px solid var(--line); border-radius: 9px; padding: 6px 26px 6px 10px; font-size: 12px; line-height: 1.2; }
+.timeline-order { width: 100px; max-width: 100px; }
+.ghost-button { height: 34px; color: #b7c8c1; background: rgba(255,255,255,.025); border: 1px solid var(--line); border-radius: 9px; padding: 6px 11px; font-size: 12px; cursor: pointer; transition: .2s ease; }
 .ghost-button:hover { color: var(--text); border-color: rgba(145,229,182,.3); background: rgba(145,229,182,.06); }
 
 .timeline {
@@ -121,10 +123,10 @@ h1 { margin: 0; font-size: clamp(30px, 4.2vw, 52px); line-height: 1.13; letter-s
 .timeline-time { color: #c9d5d0; font-size: 13px; font-variant-numeric: tabular-nums; padding-top: 4px; }
 .timeline-node { position: relative; z-index: 1; width: 11px; height: 11px; margin-top: 5px; border-radius: 50%; background: var(--category-color); box-shadow: 0 0 0 5px var(--panel-solid), 0 0 15px color-mix(in srgb, var(--category-color) 50%, transparent); }
 .timeline-card { min-width: 0; padding: 0 0 2px 5px; }
-.timeline-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 7px; }
-.category-badge { color: var(--category-color); border: 1px solid color-mix(in srgb, var(--category-color) 32%, transparent); background: color-mix(in srgb, var(--category-color) 8%, transparent); border-radius: 6px; padding: 3px 7px; font-size: 11px; }
-.platform-badge { color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 3px 7px; font-size: 10px; }
-.timeline-title strong { font-size: 15px; }
+.timeline-title { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-bottom: 7px; }
+.category-badge { color: var(--category-color); border: 1px solid color-mix(in srgb, var(--category-color) 32%, transparent); background: color-mix(in srgb, var(--category-color) 8%, transparent); border-radius: 6px; padding: 2px 7px; font-size: 11px; line-height: 1.35; }
+.platform-badge { color: #a8b8b1; border: 1px solid rgba(202,230,218,.1); background: rgba(202,230,218,.035); border-radius: 6px; padding: 2px 6px; font-size: 10px; line-height: 1.35; }
+.timeline-title strong { font-size: 15px; line-height: 1.35; }
 .timeline-description { margin: 0; color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .timeline-details { display: flex; align-items: center; gap: 12px; margin-top: 10px; color: #71847d; font-size: 11px; }
 .edit-category { appearance: none; color: #9db0a9; background: transparent; border: 0; border-bottom: 1px dashed #52635d; padding: 2px 18px 2px 0; cursor: pointer; }
@@ -174,6 +176,7 @@ h1 { margin: 0; font-size: clamp(30px, 4.2vw, 52px); line-height: 1.13; letter-s
   .timeline-actions { flex-wrap: wrap; justify-content: flex-end; }
   .device-filter-label { display: none; }
   .device-filter { max-width: 150px; }
+  .timeline-order { max-width: 100px; }
   .timeline-panel { height: min(620px, calc(100vh - 180px)); min-height: 360px; }
   .timeline::before { left: 70px; }
   .timeline-item { grid-template-columns: 53px 17px 1fr; gap: 8px; }

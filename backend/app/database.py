@@ -273,3 +273,14 @@ class Database:
                 """
             )
             return [dict(row) for row in rows]
+
+    def latest_segment(self) -> sqlite3.Row | None:
+        """Return the activity segment that ended most recently."""
+        with self.connect() as connection:
+            return connection.execute(
+                """
+                SELECT * FROM activity_segments
+                ORDER BY end_time DESC, start_time DESC, id DESC
+                LIMIT 1
+                """
+            ).fetchone()

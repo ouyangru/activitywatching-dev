@@ -41,6 +41,19 @@ export ACTIVITYWATCH_TIMEZONE="Asia/Shanghai"
 curl http://localhost:8765/api/v1/health
 ```
 
+### 同一 Wi-Fi 下用手机查看
+
+最简单的方式是在 Windows PowerShell 中直接启动后端。脚本会自动选择电脑的局域网 IPv4 地址、为本次进程生成 256 位随机令牌，并打印可在手机打开的 `/mobile` 网址：
+
+```powershell
+python -m pip install -r backend/requirements.txt
+.\scripts\start-mobile.ps1
+```
+
+这里的“局域网”是指家里或办公室同一个路由器下面的设备。脚本监听 `0.0.0.0`，含义是允许电脑所有网络接口接收连接；访问仍受随机令牌保护。Windows 首次弹出防火墙询问时，只勾选“专用网络”，不要对公共网络开放。
+
+手机页会调用 `/api/v1/status/current`，只读取最近一段已经归类的活动摘要。接口把两分钟内更新的数据标记为实时；更久的数据标记为最近记录，因此采集器停止后不会一直显示“正在工作”之类的错误状态。
+
 ## 2. Windows 采集器
 
 使用 Visual Studio 2022 Developer PowerShell：

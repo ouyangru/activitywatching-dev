@@ -1,0 +1,66 @@
+# 行迹 Android 采集器
+
+Android 端读取系统已经保存的应用前后台事件，不安装全局键盘或触摸钩子。它会把前台应用、屏幕关闭区间整理成最长五分钟的 `FeatureWindow`，先写入手机本地 SQLite 队列，再由 WorkManager 定时上传。断网期间队列不会被删除，服务恢复后可以安全重传。
+
+## 当前采集边界
+
+- 采集：应用包名、可获得时的应用显示名称、开始时间、持续时间、屏幕关闭区间。
+- 不采集：输入文字、触摸坐标、截图、通知正文、剪贴板内容。
+- Android 10 及以上不允许普通后台应用读取其他应用的剪贴板，所以“给权限”也不能把这一限制变成可靠的全局剪贴板监听。
+
+## 构建
+
+项目要求 JDK 17、Android SDK Platform 35，并使用 Gradle Wrapper。安装 Android Studio 后打开本目录，等待 SDK 同步完成；也可以在 PowerShell 中运行：
+
+```powershell
+cd android
+.\gradlew.bat assembleDebug
+```
+
+调试 APK 生成在：
+
+```text
+android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+调试构建允许访问局域网 HTTP 地址；正式构建默认禁止明文 HTTP，发布时应使用 HTTPS。
+
+### 不插 USB 的无线安装与调试
+
+Android 11 及以上可以完全通过 Wi-Fi 配对。手机打开“开发者选项 → 无线调试 → 使用配对码配对设备”，记下页面显示的 IP、配对端口和六位配对码，然后使用 Android SDK 自带的新版 `adb`：
+
+```powershell
+adb pair <手机IP:配对端口>
+# 输入手机显示的六位配对码
+adb connect <手机IP:调试端口>
+cd android
+.\gradlew.bat installDebug
+```
+
+配对端口和调试端口通常不是同一个端口，应以手机页面显示的值为准。Android 10 及以下的官方无线调试流程仍要求先连接一次 USB；如果不使用 USB，可以把编译出的 APK 放到网页上，在手机浏览器中下载并手动安装。
+
+## 局域网连接 WSL2
+
+后端必须监听 `0.0.0.0:8765`。当前电脑已经使用 WSL 镜像网络，但 Hyper-V 防火墙默认阻止局域网入站。请用管理员 PowerShell 在仓库根目录执行：
+
+```powershell
+.\scripts\enable-wsl-lan.ps1
+```
+
+脚本只为 WSL 打开 TCP `8765`，并限制来源为本地子网。然后让手机和电脑连接同一 Wi-Fi，在应用中填写脚本显示的地址，例如：
+
+```text
+http://10.250.195.180:8765
+```
+
+API Token 必须与 `backend/.env` 中的 `ACTIVITYWATCH_API_TOKEN` 相同。应用里的“测试局域网连接”只检查健康接口；“立即采集并上传”才会检查 Token。
+
+## 首次使用
+
+1. 打开应用，点击“打开系统权限页面”。
+2. 在“使用情况访问权限”中允许“行迹”。这不是普通弹窗权限，必须在系统设置里手动开启。
+3. 填写电脑局域网地址、API Token 和设备名称。
+4. 勾选“启用后台采集与自动上传”，点击“保存并启动”。
+5. 点击“立即采集并上传”，然后在浏览器时间线的设备下拉框中选择 Android 设备。
+
+WorkManager 至少每十五分钟运行一次。十五分钟是后台整理和上传周期，应用切换记录仍使用 Android 系统事件自带的真实时间戳。

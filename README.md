@@ -1,6 +1,6 @@
 # 行迹（Activity Timeline Demo）
 
-一个隐私优先的 Windows 行为时间线 Demo。Windows 原生采集器每 10 秒生成一个**特征窗口**（一小段时间内的汇总数据），WSL2 中的 FastAPI 服务把这些窗口合并为“编程、阅读技术资料、观看视频、沟通、空闲”等人能理解的行为片段，并通过浏览器展示和修正。
+一个隐私优先的跨设备行为时间线 Demo。Windows 原生采集器每 10 秒生成一个**特征窗口**（一小段时间内的汇总数据）；Android 采集器读取系统的应用切换与锁屏记录。WSL2 中的 FastAPI 服务把两端数据合并为“编程、阅读技术资料、观看视频、沟通、空闲”等人能理解的行为片段，并通过浏览器展示和修正。
 
 > 隐私边界：采集器只记录按键次数，不记录按键内容；剪贴板只记录类型、长度档位和发生时间，不记录原文或图片内容。
 
@@ -9,6 +9,7 @@
 ```text
 backend/                 FastAPI、SQLite、规则分析器和静态网页
 collector/               Windows C++/Win32 采集器
+android/                 Android 应用使用情况采集器
 tests/                   后端和分析规则测试
 scripts/seed_demo.py     生成一组可视化演示数据
 ```
@@ -37,7 +38,25 @@ bash ~/.local/share/activity-timeline/scripts/start-wsl-backend.sh
 python scripts/seed_demo.py
 ```
 
+## 手机查看当前状态
+
+外网和移动数据同步：见 [固定 HTTPS 云端部署](DEPLOYMENT_CLOUD.md)。仓库提供 `render.yaml` 部署配置，使用持久磁盘保存记录；实际创建服务需登录 Render 并确认费用。
+
+电脑和手机连接同一个 Wi-Fi 时，可在 Windows PowerShell 中运行：
+
+```powershell
+python -m pip install -r backend/requirements.txt
+.\scripts\start-mobile.ps1
+```
+
+脚本会监听局域网地址、生成一次性的随机访问令牌，并打印形如
+`http://192.168.1.20:8765/mobile?token=...` 的网址。把该网址发到自己的手机并打开即可；首次打开后令牌会存入仅供本站使用的 Cookie，之后网址栏不再携带令牌。手机页每 10 秒刷新，超过 2 分钟没有采集数据时会明确显示“最近记录”，避免把旧状态误认为当前状态。
+
+此方式只在同一局域网内提供访问，不会主动把数据发布到公网。如果手机无法连接，请在 Windows 防火墙提示中只允许“专用网络”。
+
 Windows 采集器的编译、运行和隐私说明见 [collector/README.md](collector/README.md)。完整部署说明见 [DEPLOYMENT_DEMO.md](DEPLOYMENT_DEMO.md)。
+
+Android 端的构建、授权和局域网连接说明见 [android/README.md](android/README.md)。
 
 ## HTTP 数据格式
 

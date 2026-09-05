@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>行迹 · 登录</title>
+  <link rel="stylesheet" href="/static/mobile.css?v=20260905-1">
+</head>
+<body>
+<main class="mobile-shell">
+  <header><span class="brand">行迹</span></header>
+  <section class="status-card">
+    <h1>查看我的状态</h1>
+    <p class="description">输入你的访问令牌。这台浏览器将保持登录七天。</p>
+    <form id="loginForm">
+      <label for="token">访问令牌</label>
+      <input id="token" type="password" autocomplete="current-password" required maxlength="512"
+        style="display:block;width:100%;margin-top:12px;padding:14px;font:inherit;border:1px solid #52635d;border-radius:10px">
+      <button type="submit">登录</button>
+      <p id="error" role="alert"></p>
+    </form>
+  </section>
+</main>
+<script src="/static/login.js" defer></script>
+</body>
+</html>

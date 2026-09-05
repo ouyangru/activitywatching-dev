@@ -1,0 +1,26 @@
+# Paid service + persistent disk. Review the platform's bill before creating.
+services:
+  - type: web
+    name: activity-timeline
+    runtime: python
+    region: singapore
+    plan: 0.5c-512mb
+    numInstances: 1
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT --workers 1 --no-access-log
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: ACTIVITYWATCH_ENV
+        value: production
+      - key: ACTIVITYWATCH_API_TOKEN
+        generateValue: true
+      - key: ACTIVITYWATCH_DB_PATH
+        value: /var/data/activitywatch.db
+      - key: ACTIVITYWATCH_TIMEZONE
+        value: Asia/Shanghai
+    disk:
+      name: activity-data
+      mountPath: /var/data
+      sizeGB: 1

@@ -156,7 +156,7 @@ class ActivityAnalyzer:
                 if platform_ok and process_ok and title_ok:
                     category = rule["category"]
                     behavior = rule["behavior"]
-                    description = self._description(rule, process, title)
+                    description = self._description(rule, process, title, platform)
                     break
 
         return Segment(
@@ -181,12 +181,12 @@ class ActivityAnalyzer:
         return f"使用 {clean}"
 
     @staticmethod
-    def _description(rule: dict[str, Any], process: str, title: str) -> str:
+    def _description(rule: dict[str, Any], process: str, title: str, platform: str = "windows") -> str:
         template = rule.get("description", rule["behavior"])
         project = title.split(" - ")[0].strip() if " - " in title else ""
         if not project or project.lower() in {"visual studio code", "new tab"}:
             project = "项目"
-        app = re.sub(r"\.exe$", "", process, flags=re.IGNORECASE)
+        app = title if platform == "android" and title else re.sub(r"\.exe$", "", process, flags=re.IGNORECASE)
         return template.format(project=project[:80], title=title[:120], app=app)
 
 

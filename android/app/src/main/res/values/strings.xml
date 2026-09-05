@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">行迹</string>
+    <string name="permission_title">使用情况访问权限</string>
+</resources>
