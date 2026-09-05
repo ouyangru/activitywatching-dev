@@ -7,6 +7,10 @@
 #include <sstream>
 #include <system_error>
 
+#ifndef ACTIVITY_COLLECTOR_VERSION
+#define ACTIVITY_COLLECTOR_VERSION "dev"
+#endif
+
 namespace {
 std::string utf8(const std::wstring& value) {
     if (value.empty()) return {};
@@ -14,6 +18,15 @@ std::string utf8(const std::wstring& value) {
     if (size <= 0) return {};
     std::string result(static_cast<std::size_t>(size), '\0');
     WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), result.data(), size, nullptr, nullptr);
+    return result;
+}
+
+std::wstring widen(const std::string& value) {
+    if (value.empty()) return {};
+    const int size = MultiByteToWideChar(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), nullptr, 0);
+    if (size <= 0) return {};
+    std::wstring result(static_cast<std::size_t>(size), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), result.data(), size);
     return result;
 }
 
@@ -164,6 +177,15 @@ bool BatchUploader::write_queue(const std::vector<std::string>& lines) const {
     return true;
 }
 
+bool BatchUploader::post_heartbeat(const std::wstring& device_id) {
+    if (endpoint_.host.empty()) return false;
+    std::ostringstream body;
+    body << "{\"device_id\":\"" << escape_json(device_id) << "\",\"platform\":\"windows\",\"collector_version\":\""
+         << ACTIVITY_COLLECTOR_VERSION << "\"}";
+    const std::wstring path = endpoint_.path_prefix + L"/api/v1/heartbeat";
+    return post_json(path, body.str());
+}
+
 bool BatchUploader::post_batch(const std::vector<std::string>& lines) const {
     if (endpoint_.host.empty()) return false;
     std::ostringstream body;
@@ -173,10 +195,13 @@ bool BatchUploader::post_batch(const std::vector<std::string>& lines) const {
         body << lines[index];
     }
     body << "]}";
-    const std::string payload = body.str();
+    const std::wstring path = endpoint_.path_prefix + L"/api/v1/events/batch";
+    return post_json(path, body.str());
+}
 
-    HINTERNET session = WinHttpOpen(L"ActivityTimelineCollector/0.1.1", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
-                                    WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+bool BatchUploader::post_json(const std::wstring& path, const std::string& payload) const {
+    HINTERNET session = WinHttpOpen(widen("ActivityTimelineCollector/" ACTIVITY_COLLECTOR_VERSION).c_str(),
+                                    WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     if (!session) return false;
     WinHttpSetTimeouts(session, 3000, 3000, 5000, 5000);
     HINTERNET connection = WinHttpConnect(session, endpoint_.host.c_str(), endpoint_.port, 0);
@@ -184,7 +209,6 @@ bool BatchUploader::post_batch(const std::vector<std::string>& lines) const {
         WinHttpCloseHandle(session);
         return false;
     }
-    const std::wstring path = endpoint_.path_prefix + L"/api/v1/events/batch";
     HINTERNET request = WinHttpOpenRequest(connection, L"POST", path.c_str(), nullptr, WINHTTP_NO_REFERER,
                                            WINHTTP_DEFAULT_ACCEPT_TYPES,
                                            endpoint_.secure ? WINHTTP_FLAG_SECURE : 0);

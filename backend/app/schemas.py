@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class ClipboardEvent(BaseModel):
@@ -47,4 +47,17 @@ class BatchRequest(BaseModel):
 
 
 class SegmentCorrection(BaseModel):
-    category: Literal["学习", "工作", "娱乐", "空闲", "其他"]
+    category: Literal["学习", "工作", "娱乐", "空闲", "其他"] | None = None
+    purpose: str | None = Field(default=None, min_length=1, max_length=32)
+
+    @model_validator(mode="after")
+    def require_at_least_one(self) -> "SegmentCorrection":
+        if self.category is None and self.purpose is None:
+            raise ValueError("at least one of category or purpose is required")
+        return self
+
+
+class HeartbeatRequest(BaseModel):
+    device_id: str = Field(min_length=1, max_length=128)
+    platform: Literal["windows", "android"] = "windows"
+    collector_version: str = Field(default="", max_length=64)

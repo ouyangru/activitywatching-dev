@@ -1,7 +1,14 @@
 package com.ouyangru.activitytimeline;
 
+import android.Manifest;
 import android.app.Activity;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.text.format.DateFormat;
 import android.view.View;
 import android.widget.Button;
@@ -16,6 +23,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
+    private static final int REQUEST_NOTIFICATIONS = 1001;
+
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private SettingsStore settings;
     private EditText serverUrlInput;
@@ -49,6 +58,7 @@ public final class MainActivity extends Activity {
         findViewById(R.id.saveButton).setOnClickListener(view -> saveAndConfigure());
         findViewById(R.id.testButton).setOnClickListener(view -> testConnection(view));
         syncButton.setOnClickListener(view -> syncNow());
+        findViewById(R.id.batteryButton).setOnClickListener(view -> requestBatteryExemption());
 
         refreshStatus();
     }
@@ -67,18 +77,51 @@ public final class MainActivity extends Activity {
             Toast.makeText(this, error, Toast.LENGTH_LONG).show();
             return;
         }
+        boolean enabled = monitoringEnabled.isChecked();
         settings.saveConnection(
             serverUrlInput.getText().toString(),
             tokenInput.getText().toString(),
             deviceIdInput.getText().toString(),
-            monitoringEnabled.isChecked()
+            enabled
         );
-        Scheduler.configure(this, monitoringEnabled.isChecked());
-        if (monitoringEnabled.isChecked()) {
+        Scheduler.configure(this, enabled);
+        if (enabled) {
+            requestNotificationPermissionIfNeeded();
+            CollectorService.start(this);
             Scheduler.syncNow(this);
+        } else {
+            CollectorService.stop(this);
         }
-        Toast.makeText(this, monitoringEnabled.isChecked() ? "已启动后台采集" : "已停止后台采集", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, enabled ? "已启动后台采集" : "已停止后台采集", Toast.LENGTH_SHORT).show();
         refreshStatus();
+    }
+
+    private void requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= 33
+            && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_NOTIFICATIONS);
+        }
+    }
+
+    private void requestBatteryExemption() {
+        PowerManager powerManager = getSystemService(PowerManager.class);
+        if (powerManager == null) {
+            Toast.makeText(this, "无法读取电池优化状态", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (powerManager.isIgnoringBatteryOptimizations(getPackageName())) {
+            Toast.makeText(this, "已在电池优化白名单中，请再到系统设置确认后台运行权限", Toast.LENGTH_LONG).show();
+            return;
+        }
+        try {
+            Intent intent = new Intent(
+                Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                Uri.parse("package:" + getPackageName())
+            );
+            startActivity(intent);
+        } catch (Exception ignored) {
+            Toast.makeText(this, "请到 系统设置 → 电池 中手动允许本应用完全后台行为", Toast.LENGTH_LONG).show();
+        }
     }
 
     private void syncNow() {
@@ -100,6 +143,7 @@ public final class MainActivity extends Activity {
         );
         monitoringEnabled.setChecked(true);
         Scheduler.configure(this, true);
+        CollectorService.start(this);
         Scheduler.syncNow(this);
         runtimeStatus.setText("已提交立即同步任务，请稍后刷新状态或查看网页时间线。\n当前待发送：" + pendingCount() + " 条");
     }

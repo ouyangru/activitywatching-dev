@@ -30,6 +30,35 @@ final class ApiClient {
         return body;
     }
 
+    static void heartbeat(String serverUrl, String token, String deviceId) {
+        if (serverUrl == null || serverUrl.isBlank()) {
+            return;
+        }
+        HttpURLConnection connection = null;
+        try {
+            byte[] body = new JSONObject()
+                .put("device_id", deviceId)
+                .put("platform", "android")
+                .put("collector_version", "0.3.0")
+                .toString()
+                .getBytes(StandardCharsets.UTF_8);
+            connection = open(serverUrl + "/api/v1/heartbeat", "POST", token);
+            connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+            connection.setFixedLengthStreamingMode(body.length);
+            connection.setDoOutput(true);
+            try (OutputStream output = connection.getOutputStream()) {
+                output.write(body);
+            }
+            connection.getResponseCode();
+        } catch (Exception ignored) {
+            // 心跳失败不影响采集与上传，下轮再试
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+
     static UploadResult uploadPending(QueueDatabase queue, SettingsStore settings) {
         String serverUrl = settings.serverUrl();
         if (serverUrl.isBlank()) {

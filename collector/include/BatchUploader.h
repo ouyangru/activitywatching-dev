@@ -17,6 +17,7 @@ public:
                   std::size_t batch_size, std::size_t max_queue);
     bool enqueue(const FeatureWindow& window);
     bool flush();
+    bool post_heartbeat(const std::wstring& device_id);
     [[nodiscard]] std::size_t pending_count() const;
 
     [[nodiscard]] static std::string serialize(const FeatureWindow& window);
@@ -33,6 +34,7 @@ private:
     [[nodiscard]] std::vector<std::string> read_queue() const;
     bool write_queue(const std::vector<std::string>& lines) const;
     [[nodiscard]] bool post_batch(const std::vector<std::string>& lines) const;
+    [[nodiscard]] bool post_json(const std::wstring& path, const std::string& payload) const;
 
     std::wstring server_url_;
     std::wstring api_token_;

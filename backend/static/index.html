@@ -17,6 +17,10 @@
         <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
         <span>行迹</span>
       </a>
+      <nav class="topbar-nav">
+        <a class="nav-link is-active" href="/">今日</a>
+        <a class="nav-link" href="/daily">日报</a>
+      </nav>
       <div class="live-pill"><span></span> <b id="connectionLabel">正在连接</b></div>
       <time id="todayLabel"></time>
     </header>
@@ -26,12 +30,13 @@
         <p class="eyebrow">CURRENT FOCUS · 当前状态</p>
         <h1 id="currentTitle">等待第一段行为数据</h1>
         <p id="currentMeta" class="hero-meta">启动采集器后，新的特征窗口会自动出现在这里。</p>
+        <div id="deviceStatusRow" class="device-status-row" aria-label="设备在线状态"></div>
       </div>
       <div class="focus-orbit" aria-hidden="true"><span></span></div>
     </section>
 
     <section class="stats" aria-label="今日概览">
-      <article><span id="trackedLabel">已记录设备时长</span><strong id="trackedTime">0.0 小时</strong></article>
+      <article><span id="trackedLabel">已记录设备时长</span><strong id="trackedTime">0min</strong></article>
       <article><span>行为片段</span><strong id="segmentCount">0</strong></article>
       <article><span>专注占比</span><strong id="focusRate">0%</strong></article>
       <article><span>数据策略</span><strong class="privacy-value">仅汇总</strong></article>
@@ -45,6 +50,10 @@
             <h2 id="timelineTitle">今日时间线</h2>
           </div>
           <div class="timeline-actions">
+            <div class="view-switch" role="tablist" aria-label="时间线视图">
+              <button class="view-switch-button is-active" type="button" role="tab" aria-selected="true" data-timeline-view="detail">设备明细</button>
+              <button class="view-switch-button" type="button" role="tab" aria-selected="false" data-timeline-view="combined">主活动</button>
+            </div>
             <label class="device-filter-label" for="deviceFilter">设备</label>
             <select id="deviceFilter" class="device-filter">
               <option value="">全部设备</option>
@@ -70,11 +79,24 @@
             <div class="view-switch" role="tablist" aria-label="时间分布视图">
               <button class="view-switch-button is-active" type="button" role="tab" aria-selected="true" data-view="donut">分类</button>
               <button class="view-switch-button" type="button" role="tab" aria-selected="false" data-view="stack">按时间</button>
+              <button class="view-switch-button" type="button" role="tab" aria-selected="false" data-view="purpose">目的</button>
             </div>
           </div>
           <div id="chart" class="chart" role="img" aria-label="今日分类时间占比"></div>
           <div id="timeStackChart" class="chart time-stack-chart" role="img" aria-label="今日按时间分类堆叠"></div>
           <div id="legend" class="legend"></div>
+        </section>
+
+        <section class="panel insights-panel" aria-labelledby="insightsTitle">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">INSIGHTS</p>
+              <h2 id="insightsTitle">专注洞察</h2>
+            </div>
+          </div>
+          <div class="focus-grid" id="focusGrid"></div>
+          <h3 class="ranking-title">应用排行</h3>
+          <ol id="appRanking" class="ranking-list"></ol>
         </section>
 
         <section class="privacy-card">
@@ -90,6 +112,6 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js"></script>
-  <script src="/static/app.js?v=20260906-1" defer></script>
+  <script src="/static/app.js?v=20260906-2" defer></script>
 </body>
 </html>

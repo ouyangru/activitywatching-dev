@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0d1b1a">
+  <title>行迹 · 日报</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2310201e'/%3E%3Cpath d='M18 40V29M32 40V17M46 40V24' stroke='%2391e5b6' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/styles.css?v=20260906-2">
+</head>
+<body>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+  <main class="shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="行迹首页">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span>行迹</span>
+      </a>
+      <nav class="topbar-nav">
+        <a class="nav-link" href="/">今日</a>
+        <a class="nav-link is-active" href="/daily">日报</a>
+      </nav>
+      <div class="live-pill"><span></span> <b id="connectionLabel">正在连接</b></div>
+      <time id="dateLabel"></time>
+    </header>
+
+    <section class="hero hero-daily" aria-labelledby="dailyTitle">
+      <div>
+        <p class="eyebrow">DAILY REPORT · 日报</p>
+        <h1 id="dailyTitle">今日行为日报</h1>
+        <p id="dailySummary" class="hero-meta">正在生成日报摘要…</p>
+      </div>
+      <div class="date-nav">
+        <button id="prevDay" class="ghost-button" type="button">前一天</button>
+        <input id="dayInput" class="date-input" type="date" aria-label="选择日期">
+        <button id="nextDay" class="ghost-button" type="button">后一天</button>
+        <button id="todayButton" class="ghost-button" type="button">回到今天</button>
+      </div>
+    </section>
+
+    <section class="stats" aria-label="当日概览">
+      <article><span>有效记录时长</span><strong id="trackedTime">0.0 小时</strong></article>
+      <article><span>主活动片段</span><strong id="combinedCount">0</strong></article>
+      <article><span>最长专注</span><strong id="longestFocus">0 分钟</strong></article>
+      <article><span>行为切换</span><strong id="switchCount">0 次</strong></article>
+    </section>
+
+    <div class="content-grid">
+      <section class="panel timeline-panel" aria-labelledby="mainTitle">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">PRIMARY ACTIVITY</p>
+            <h2 id="mainTitle">主活动时间线</h2>
+          </div>
+        </div>
+        <div id="mainTimeline" class="timeline" aria-live="polite"></div>
+      </section>
+
+      <aside class="side-column">
+        <section class="panel distribution-panel" aria-labelledby="dailyDistributionTitle">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">DISTRIBUTION</p>
+              <h2 id="dailyDistributionTitle">时间分布</h2>
+            </div>
+            <div class="view-switch" role="tablist" aria-label="分布维度">
+              <button class="view-switch-button is-active" type="button" role="tab" aria-selected="true" data-daily-dimension="category">分类</button>
+              <button class="view-switch-button" type="button" role="tab" aria-selected="false" data-daily-dimension="purpose">目的</button>
+            </div>
+          </div>
+          <div id="dailyChart" class="chart" role="img" aria-label="当日时间分布"></div>
+          <div id="dailyLegend" class="legend"></div>
+        </section>
+
+        <section class="panel insights-panel" aria-labelledby="dailyInsightsTitle">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">INSIGHTS</p>
+              <h2 id="dailyInsightsTitle">排行与打断</h2>
+            </div>
+          </div>
+          <h3 class="ranking-title">应用排行</h3>
+          <ol id="dailyAppRanking" class="ranking-list"></ol>
+          <h3 class="ranking-title">行为排行</h3>
+          <ol id="dailyBehaviorRanking" class="ranking-list"></ol>
+          <h3 class="ranking-title">主要打断来源</h3>
+          <ol id="interruptionSources" class="ranking-list"></ol>
+        </section>
+
+        <section class="privacy-card">
+          <div class="shield" aria-hidden="true">✓</div>
+          <div>
+            <strong>隐私保护已启用</strong>
+            <p>日报完全由本地规则汇总生成，不包含键盘输入与剪贴板原文。</p>
+          </div>
+        </section>
+      </aside>
+    </div>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js"></script>
+  <script src="/static/daily.js?v=20260906-1" defer></script>
+</body>
+</html>

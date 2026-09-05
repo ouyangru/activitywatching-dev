@@ -18,7 +18,32 @@ def test_android_manifest_requests_only_mvp_permissions():
         "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.PACKAGE_USAGE_STATS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
     }
+
+
+def test_android_manifest_declares_special_use_foreground_collector():
+    manifest = ElementTree.parse(ANDROID / "app/src/main/AndroidManifest.xml").getroot()
+    services = manifest.findall("application/service")
+    assert len(services) == 1
+    service = services[0]
+    assert service.attrib[f"{ANDROID_NS}name"] == ".CollectorService"
+    assert service.attrib[f"{ANDROID_NS}foregroundServiceType"] == "specialUse"
+    assert service.find("property") is not None
+
+
+def test_android_collector_ignores_system_ui_and_launcher_packages():
+    collector = (ANDROID / "app/src/main/java/com/ouyangru/activitytimeline/UsageCollector.java").read_text("utf-8")
+
+    assert "com.android.systemui" in collector
+    assert "com.oppo.launcher" in collector
+    assert "com.vivo.launcher" in collector
+    assert ".inputmethod" in collector
+    # 真实应用（相机、拨号）不应被过滤
+    assert "com.android.camera" not in collector
 
 
 def test_cleartext_http_is_debug_only():

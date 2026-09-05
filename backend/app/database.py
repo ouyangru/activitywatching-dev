@@ -62,6 +62,35 @@ CREATE TABLE IF NOT EXISTS activity_segments (
 CREATE INDEX IF NOT EXISTS idx_activity_segments_time
 ON activity_segments(start_time, end_time);
 
+CREATE TABLE IF NOT EXISTS combined_segments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    day TEXT NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    main_device_id TEXT NOT NULL DEFAULT '',
+    main_platform TEXT NOT NULL DEFAULT 'none',
+    category TEXT NOT NULL,
+    purpose TEXT NOT NULL,
+    behavior TEXT NOT NULL,
+    description TEXT NOT NULL,
+    process TEXT NOT NULL DEFAULT '',
+    engagement_score REAL NOT NULL DEFAULT 0,
+    overlap_seconds INTEGER NOT NULL DEFAULT 0,
+    secondary_json TEXT NOT NULL DEFAULT '[]',
+    reason TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_combined_segments_day
+ON combined_segments(day, start_time);
+CREATE TABLE IF NOT EXISTS collector_heartbeats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id TEXT NOT NULL UNIQUE,
+    platform TEXT NOT NULL DEFAULT 'windows',
+    collector_version TEXT NOT NULL DEFAULT '',
+    last_heartbeat_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS user_corrections (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     segment_id INTEGER,
@@ -70,6 +99,36 @@ CREATE TABLE IF NOT EXISTS user_corrections (
     segment_end_time TEXT NOT NULL,
     previous_category TEXT NOT NULL,
     new_category TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS classification_evidence (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    digest TEXT NOT NULL UNIQUE,
+    platform TEXT NOT NULL,
+    process TEXT NOT NULL,
+    title_summary TEXT NOT NULL DEFAULT '',
+    behavior TEXT NOT NULL DEFAULT '',
+    purpose TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL DEFAULT '',
+    topic TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    confidence REAL NOT NULL DEFAULT 0,
+    explanation TEXT NOT NULL DEFAULT '',
+    model TEXT NOT NULL DEFAULT '',
+    input_json TEXT NOT NULL DEFAULT '{}',
+    revoked INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_classification_evidence_digest
+ON classification_evidence(digest);
+
+CREATE TABLE IF NOT EXISTS daily_summaries (
+    day TEXT PRIMARY KEY,
+    version TEXT NOT NULL,
+    narrative TEXT NOT NULL,
+    model TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL
 );
 """
@@ -88,6 +147,8 @@ class Database:
             connection.executescript(SCHEMA)
             self._ensure_column(connection, "feature_windows", "platform", "TEXT NOT NULL DEFAULT 'windows'")
             self._ensure_column(connection, "activity_segments", "platform", "TEXT NOT NULL DEFAULT 'windows'")
+            self._ensure_column(connection, "activity_segments", "purpose", "TEXT NOT NULL DEFAULT '其他'")
+            self._ensure_column(connection, "combined_segments", "topic", "TEXT NOT NULL DEFAULT ''")
 
     @staticmethod
     def _ensure_column(
@@ -183,8 +244,9 @@ class Database:
                     INSERT INTO activity_segments (
                         device_id, platform, start_time, end_time, category, base_category, behavior,
                         description, process, window_title, window_count, key_count,
-                        mouse_click_count, scroll_count, interruptions_json, manual_override, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        mouse_click_count, scroll_count, interruptions_json, manual_override,
+                        purpose, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         device_id,
@@ -203,6 +265,7 @@ class Database:
                         segment["scroll_count"],
                         json.dumps(segment["interruptions"], ensure_ascii=False),
                         int(corrected is not None),
+                        segment.get("purpose", "其他"),
                         now,
                     ),
                 )
@@ -225,7 +288,11 @@ class Database:
                 best = (score, row)
         return best[1] if best else None
 
-    def correct_segment(self, segment_id: int, new_category: str) -> dict[str, Any] | None:
+    def correct_segment(
+        self, segment_id: int, new_category: str | None = None, new_purpose: str | None = None
+    ) -> dict[str, Any] | None:
+        if new_category is None and new_purpose is None:
+            return None
         now = utc_iso(datetime.now(timezone.utc))
         with self._write_lock, self.connect() as connection:
             row = connection.execute("SELECT * FROM activity_segments WHERE id = ?", (segment_id,)).fetchone()
@@ -244,35 +311,112 @@ class Database:
                     row["start_time"],
                     row["end_time"],
                     row["category"],
-                    new_category,
+                    new_purpose if new_category is None else new_category,
                     now,
                 ),
             )
             connection.execute(
-                "UPDATE activity_segments SET category = ?, manual_override = 1, updated_at = ? WHERE id = ?",
-                (new_category, now, segment_id),
+                "UPDATE activity_segments SET category = COALESCE(?, category), purpose = COALESCE(?, purpose), manual_override = 1, updated_at = ? WHERE id = ?",
+                (new_category, new_purpose, now, segment_id),
             )
             updated = dict(row)
-            updated.update(category=new_category, manual_override=1, updated_at=now)
+            updated.update(
+                category=new_category or row["category"],
+                purpose=new_purpose or row["purpose"],
+                manual_override=1,
+                updated_at=now,
+            )
             return updated
 
     def count(self, table: str) -> int:
-        if table not in {"feature_windows", "activity_segments", "user_corrections"}:
+        if table not in {"feature_windows", "activity_segments", "user_corrections", "combined_segments", "classification_evidence"}:
             raise ValueError("unsupported table")
         with self.connect() as connection:
             return int(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
 
-    def list_devices(self) -> list[dict[str, Any]]:
+    def replace_combined_segments(self, day: str, segments: list[dict[str, Any]]) -> int:
+        now = utc_iso(datetime.now(timezone.utc))
+        with self._write_lock, self.connect() as connection:
+            connection.execute("DELETE FROM combined_segments WHERE day = ?", (day,))
+            for segment in segments:
+                connection.execute(
+                    """
+                    INSERT INTO combined_segments (
+                        day, start_time, end_time, main_device_id, main_platform, category, purpose,
+                        behavior, description, process, engagement_score, overlap_seconds,
+                        secondary_json, reason, topic, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        day,
+                        segment["start_time"],
+                        segment["end_time"],
+                        segment.get("main_device_id", ""),
+                        segment.get("main_platform", "none"),
+                        segment["category"],
+                        segment.get("purpose", "其他"),
+                        segment.get("behavior", ""),
+                        segment.get("description", ""),
+                        segment.get("process", ""),
+                        segment.get("engagement_score", 0.0),
+                        int(segment.get("overlap_seconds", 0)),
+                        json.dumps(segment.get("secondary", []), ensure_ascii=False),
+                        segment.get("reason", ""),
+                        segment.get("topic", ""),
+                        now,
+                    ),
+                )
+        return len(segments)
+
+    def combined_for_day(self, day: str) -> list[sqlite3.Row]:
+        with self.connect() as connection:
+            return list(
+                connection.execute(
+                    "SELECT * FROM combined_segments WHERE day = ? ORDER BY start_time ASC",
+                    (day,),
+                )
+            )
+
+    def upsert_heartbeat(self, device_id: str, platform: str, collector_version: str) -> str:
+        now = utc_iso(datetime.now(timezone.utc))
+        with self._write_lock, self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO collector_heartbeats (device_id, platform, collector_version, last_heartbeat_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(device_id) DO UPDATE SET
+                    platform = excluded.platform,
+                    collector_version = excluded.collector_version,
+                    last_heartbeat_at = excluded.last_heartbeat_at
+                """,
+                (device_id, platform, collector_version, now),
+            )
+        return now
+
+    def list_devices(self, now: datetime | None = None) -> list[dict[str, Any]]:
+        now = now or datetime.now(timezone.utc)
         with self.connect() as connection:
             rows = connection.execute(
                 """
-                SELECT device_id, platform, MAX(start_time) AS last_seen, COUNT(*) AS window_count
-                FROM feature_windows
-                GROUP BY device_id, platform
+                SELECT f.device_id, f.platform, MAX(f.start_time) AS last_seen, COUNT(*) AS window_count,
+                       h.collector_version, h.last_heartbeat_at
+                FROM feature_windows f
+                LEFT JOIN collector_heartbeats h ON h.device_id = f.device_id
+                GROUP BY f.device_id, f.platform, h.collector_version, h.last_heartbeat_at
                 ORDER BY last_seen DESC
                 """
             )
-            return [dict(row) for row in rows]
+            devices = []
+            for row in rows:
+                record = dict(row)
+                reference = record.pop("last_heartbeat_at")
+                if reference:
+                    heartbeat_at = datetime.fromisoformat(reference.replace("Z", "+00:00"))
+                    record["is_online"] = (now - heartbeat_at).total_seconds() <= 120
+                else:
+                    record["is_online"] = False
+                devices.append(record)
+            return devices
 
     def latest_segment(self) -> sqlite3.Row | None:
         """Return the activity segment that ended most recently."""
@@ -283,4 +427,85 @@ class Database:
                 ORDER BY end_time DESC, start_time DESC, id DESC
                 LIMIT 1
                 """
+            ).fetchone()
+
+    def evidence_map(self, digests: list[str]) -> dict[str, sqlite3.Row]:
+        """Return non-revoked agent evidence rows keyed by digest."""
+        if not digests:
+            return {}
+        placeholders = ",".join("?" * len(digests))
+        with self.connect() as connection:
+            rows = connection.execute(
+                f"SELECT * FROM classification_evidence WHERE digest IN ({placeholders}) AND revoked = 0",
+                digests,
+            )
+            return {row["digest"]: row for row in rows}
+
+    def upsert_evidence(self, record: dict[str, Any]) -> None:
+        now = utc_iso(datetime.now(timezone.utc))
+        with self._write_lock, self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO classification_evidence (
+                    digest, platform, process, title_summary, behavior, purpose, category, topic,
+                    description, confidence, explanation, model, input_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(digest) DO UPDATE SET
+                    behavior = excluded.behavior,
+                    purpose = excluded.purpose,
+                    category = excluded.category,
+                    topic = excluded.topic,
+                    description = excluded.description,
+                    confidence = excluded.confidence,
+                    explanation = excluded.explanation,
+                    model = excluded.model,
+                    input_json = excluded.input_json,
+                    revoked = 0,
+                    created_at = excluded.created_at
+                """,
+                (
+                    record["digest"],
+                    record["platform"],
+                    record["process"],
+                    record.get("title_summary", ""),
+                    record.get("behavior", ""),
+                    record.get("purpose", ""),
+                    record.get("category", ""),
+                    record.get("topic", ""),
+                    record.get("description", ""),
+                    float(record.get("confidence", 0.0)),
+                    record.get("explanation", ""),
+                    record.get("model", ""),
+                    json.dumps(record.get("input", {}), ensure_ascii=False),
+                    now,
+                ),
+            )
+
+    def revoke_evidence(self, digest: str) -> bool:
+        with self._write_lock, self.connect() as connection:
+            cursor = connection.execute(
+                "UPDATE classification_evidence SET revoked = 1 WHERE digest = ?", (digest,)
+            )
+            return cursor.rowcount == 1
+
+    def save_daily_summary(self, day: str, version: str, narrative: str, model: str) -> None:
+        now = utc_iso(datetime.now(timezone.utc))
+        with self._write_lock, self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO daily_summaries (day, version, narrative, model, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(day) DO UPDATE SET
+                    version = excluded.version,
+                    narrative = excluded.narrative,
+                    model = excluded.model,
+                    created_at = excluded.created_at
+                """,
+                (day, version, narrative, model, now),
+            )
+
+    def daily_summary(self, day: str) -> sqlite3.Row | None:
+        with self.connect() as connection:
+            return connection.execute(
+                "SELECT * FROM daily_summaries WHERE day = ?", (day,)
             ).fetchone()

@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -22,6 +23,9 @@ constexpr UINT_PTR kSampleTimer = 1;
 constexpr UINT kTrayMessage = WM_APP + 1;
 constexpr UINT kTrayId = 100;
 constexpr UINT kExitCommand = 200;
+constexpr UINT kAutostartCommand = 201;
+constexpr wchar_t kRunKey[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+constexpr wchar_t kAutostartValue[] = L"ActivityTimelineCollector";
 
 struct Options {
     std::wstring server{L"http://localhost:8765"};
@@ -30,6 +34,7 @@ struct Options {
     std::size_t batch_size{12};
     std::size_t max_queue{60480};
     bool console{false};
+    int autostart_action{0}; // 0 = none, 1 = enable, -1 = disable
 };
 
 struct Application {
@@ -67,6 +72,11 @@ Options parse_options() {
         else if (arguments[index] == L"--batch-size") options.batch_size = std::max<std::size_t>(1, std::stoull(take_value()));
         else if (arguments[index] == L"--max-queue") options.max_queue = std::max<std::size_t>(1, std::stoull(take_value()));
         else if (arguments[index] == L"--console") options.console = true;
+        else if (arguments[index] == L"--autostart") {
+            const auto value = take_value();
+            if (value == L"on") options.autostart_action = 1;
+            else if (value == L"off") options.autostart_action = -1;
+        }
     }
     return options;
 }
@@ -83,6 +93,44 @@ std::wstring device_id() {
     DWORD size = static_cast<DWORD>(std::size(name));
     if (GetComputerNameW(name, &size)) return L"windows-" + std::wstring(name, size);
     return L"windows-pc";
+}
+
+std::wstring module_path() {
+    wchar_t buffer[32768]{};
+    const DWORD length = GetModuleFileNameW(nullptr, buffer, static_cast<DWORD>(std::size(buffer)));
+    return length ? std::wstring(buffer, length) : std::wstring();
+}
+
+// The autostart command preserves the current --server/--token/... arguments
+// so a boot-time launch talks to the same backend as this manual run. Only
+// --console is stripped: a session-start launch should stay quiet.
+std::wstring autostart_command() {
+    std::wstring command = L"\"" + module_path() + L"\"";
+    for (const auto& argument : command_line_arguments()) {
+        if (argument == L"--console" || argument.rfind(L"--autostart", 0) == 0) continue;
+        if (argument.find_first_of(L" \t") != std::wstring::npos) {
+            command += L" \"" + argument + L"\"";
+        } else {
+            command += L" " + argument;
+        }
+    }
+    return command;
+}
+
+bool autostart_enabled() {
+    wchar_t buffer[32768]{};
+    DWORD size = sizeof(buffer);
+    return RegGetValueW(HKEY_CURRENT_USER, kRunKey, kAutostartValue, RRF_RT_REG_SZ, nullptr, buffer, &size) == ERROR_SUCCESS;
+}
+
+bool set_autostart(bool enable) {
+    if (!enable) {
+        const LSTATUS status = RegDeleteKeyValueW(HKEY_CURRENT_USER, kRunKey, kAutostartValue);
+        return status == ERROR_SUCCESS || status == ERROR_FILE_NOT_FOUND;
+    }
+    const std::wstring command = autostart_command();
+    return RegSetKeyValueW(HKEY_CURRENT_USER, kRunKey, kAutostartValue, REG_SZ, command.c_str(),
+                           static_cast<DWORD>((command.size() + 1) * sizeof(wchar_t))) == ERROR_SUCCESS;
 }
 
 void emit_window() {
@@ -132,6 +180,15 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l
         if (w_param == kSampleTimer && g_application) emit_window();
         return 0;
     case WM_COMMAND:
+        if (LOWORD(w_param) == kAutostartCommand) {
+            const bool enable = !autostart_enabled();
+            if (set_autostart(enable)) {
+                OutputDebugStringW(enable ? L"ActivityTimeline: autostart enabled.\n"
+                                          : L"ActivityTimeline: autostart disabled.\n");
+            } else {
+                MessageBoxW(window, L"修改开机自启注册表项失败。", L"行迹采集器", MB_ICONERROR | MB_OK);
+            }
+        }
         if (LOWORD(w_param) == kExitCommand) DestroyWindow(window);
         return 0;
     case kTrayMessage:
@@ -139,6 +196,8 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l
             POINT point{};
             GetCursorPos(&point);
             HMENU menu = CreatePopupMenu();
+            AppendMenuW(menu, MF_STRING | (autostart_enabled() ? MF_CHECKED : 0U), kAutostartCommand, L"开机自启");
+            AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
             AppendMenuW(menu, MF_STRING, kExitCommand, L"退出采集器");
             SetForegroundWindow(window);
             TrackPopupMenu(menu, TPM_RIGHTBUTTON, point.x, point.y, 0, window, nullptr);
@@ -172,6 +231,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         AllocConsole();
         FILE* stream = nullptr;
         freopen_s(&stream, "CONOUT$", "w", stdout);
+    }
+
+    // Scriptable autostart management: apply and exit without collecting.
+    if (options.autostart_action != 0) {
+        if (!set_autostart(options.autostart_action > 0)) return 5;
+        if (options.console) {
+            std::printf("autostart %s\n", options.autostart_action > 0 ? "on" : "off");
+        }
+        return 0;
     }
 
     const auto directory = data_directory();

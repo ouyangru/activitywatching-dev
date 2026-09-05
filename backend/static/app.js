@@ -7,11 +7,15 @@ const CATEGORY_COLORS = {
   "无设备记录": "#4b5563",
 };
 const CATEGORIES = Object.keys(CATEGORY_COLORS);
+const PURPOSE_FALLBACK_COLORS = ["#6fe0a3", "#6ba7ff", "#f3b562", "#e07a72", "#b88cff", "#7fd4d4", "#d98fc0"];
 const EDITABLE_CATEGORIES = CATEGORIES.filter((category) => category !== "无设备记录");
 let chartInstance = null;
 let timeStackChartInstance = null;
 let selectedDevice = "";
 let timelineOrder = "desc";
+let timelineView = "detail";
+let distributionView = "donut";
+let latestInsights = null;
 
 function platformLabel(platform) {
   if (platform === "android") return "Android";
@@ -30,14 +34,18 @@ function formatClock(iso) {
 }
 
 function formatDuration(seconds) {
-  if (seconds < 60) return `${seconds} 秒`;
+  if (seconds < 60) return `${seconds}秒`;
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.round((seconds % 3600) / 60);
-  return hours ? `${hours} 小时 ${minutes} 分钟` : `${minutes} 分钟`;
+  if (hours > 0) return `${hours}h${minutes > 0 ? " " + minutes + "min" : ""}`;
+  return `${minutes}min`;
 }
 
 function formatTrackedHours(seconds) {
-  return `${(seconds / 3600).toFixed(1)} 小时`;
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.round((seconds % 3600) / 60);
+  if (hours > 0) return `${hours}h${minutes > 0 ? " " + minutes + "min" : ""}`;
+  return `${minutes}min`;
 }
 
 function escapeHtml(value) {
@@ -60,6 +68,11 @@ function renderTimeline(segments) {
     return;
   }
 
+  if (timelineView === "combined") {
+    renderCombinedTimeline(segments);
+    return;
+  }
+
   const orderedSegments = [...segments].sort((left, right) => {
     const direction = timelineOrder === "desc" ? -1 : 1;
     return direction * (new Date(left.start_time) - new Date(right.start_time));
@@ -72,6 +85,8 @@ function renderTimeline(segments) {
     ).join("");
     const interruption = segment.interruptions.length ? ` · ${segment.interruptions.length} 次短暂打断` : "";
     const manual = segment.manual_override ? " · 已人工修正" : "";
+    const purposeTag = segment.purpose && segment.purpose !== segment.category
+      ? `<span class="purpose-badge">目的：${escapeHtml(segment.purpose)}</span>` : "";
     return `
       <article class="timeline-item" style="--category-color:${color}">
         <time class="timeline-time">${formatClock(segment.start_time_local)}</time>
@@ -79,6 +94,7 @@ function renderTimeline(segments) {
         <div class="timeline-card">
           <div class="timeline-title">
             <span class="category-badge">${escapeHtml(segment.category)}</span>
+            ${purposeTag}
             <span class="platform-badge">${platformLabel(segment.platform)}${segment.device_id ? ` · ${escapeHtml(segment.device_id)}` : ""}</span>
             <strong>${escapeHtml(segment.behavior)}</strong>
           </div>
@@ -114,26 +130,116 @@ function renderTimeline(segments) {
   target.scrollTop = 0;
 }
 
+function renderCombinedTimeline(segments) {
+  const target = document.getElementById("timeline");
+  const orderedSegments = [...segments].sort((left, right) => {
+    const direction = timelineOrder === "desc" ? -1 : 1;
+    return direction * (new Date(left.start_time) - new Date(right.start_time));
+  });
+
+  target.innerHTML = orderedSegments.map((segment) => {
+    const color = CATEGORY_COLORS[segment.category] || CATEGORY_COLORS["其他"];
+    const secondary = (segment.secondary || []).map((item) =>
+      `<span class="secondary-badge">${platformLabel(item.platform)} · ${escapeHtml(item.behavior)}</span>`
+    ).join("");
+    const overlap = segment.overlap_seconds > 0
+      ? `<span class="overlap-badge" title="该时段多设备重叠，仅主活动计入时长">重叠 ${formatDuration(segment.overlap_seconds)}</span>`
+      : "";
+    return `
+      <article class="timeline-item" style="--category-color:${color}">
+        <time class="timeline-time">${formatClock(segment.start_time_local)}</time>
+        <span class="timeline-node" aria-hidden="true"></span>
+        <div class="timeline-card">
+          <div class="timeline-title">
+            <span class="category-badge">${escapeHtml(segment.category)}</span>
+            <span class="platform-badge">${platformLabel(segment.main_platform)}${segment.main_device_id ? ` · ${escapeHtml(segment.main_device_id)}` : ""}</span>
+            <strong>${escapeHtml(segment.behavior || segment.category)}</strong>
+            <span class="reason-chip" title="主活动判定依据">${escapeHtml(segment.reason || "")}</span>
+          </div>
+          <p class="timeline-description">${escapeHtml(segment.description || "")}</p>
+          ${secondary || overlap ? `<div class="secondary-row">${secondary}${overlap}</div>` : ""}
+          <div class="timeline-details">
+            <span>${formatClock(segment.start_time_local)}—${formatClock(segment.end_time_local)}</span>
+            <span>${formatDuration(segment.duration_seconds)}</span>
+          </div>
+        </div>
+      </article>`;
+  }).join("");
+  target.scrollTop = 0;
+}
+
+function renderInsights(insights) {
+  if (!insights) return;
+  const focus = insights.focus || {};
+  const switches = insights.switches || {};
+  document.getElementById("focusGrid").innerHTML = `
+    <div class="focus-cell"><span>最长专注</span><strong>${formatDuration(focus.longest_seconds || 0)}</strong></div>
+    <div class="focus-cell"><span>专注时段</span><strong>${focus.sessions || 0} 次</strong></div>
+    <div class="focus-cell"><span>行为切换</span><strong>${switches.behavior_changes || 0} 次</strong></div>
+    <div class="focus-cell"><span>短暂打断</span><strong>${switches.interruptions || 0} 次</strong></div>`;
+
+  const apps = insights.apps || [];
+  document.getElementById("appRanking").innerHTML = apps.length
+    ? apps.map((app) => `
+      <li class="ranking-row">
+        <span class="ranking-name" title="${escapeHtml(app.process)}">${escapeHtml(app.process)}</span>
+        <span class="ranking-bar"><i style="width:${app.share}%"></i></span>
+        <b class="ranking-value">${escapeHtml(app.duration_text)}</b>
+      </li>`).join("")
+    : `<li class="ranking-empty">暂无应用数据</li>`;
+}
+
 async function loadDevices() {
   const response = await fetch("/api/v1/devices");
   if (!response.ok) throw new Error("设备列表加载失败");
   const { devices } = await response.json();
   const select = document.getElementById("deviceFilter");
   const current = selectedDevice;
-  select.innerHTML = `<option value="">全部设备</option>` + devices.map((device) =>
-    `<option value="${escapeHtml(device.device_id)}">${platformLabel(device.platform)} · ${escapeHtml(device.device_id)}</option>`
-  ).join("");
+  select.innerHTML = `<option value="">全部设备</option>` + devices.map((device) => {
+    const status = device.is_online
+      ? `<span class="device-status is-online" title="采集器在线"></span>`
+      : `<span class="device-status is-offline" title="离线或未心跳"></span>`;
+    return `<option value="${escapeHtml(device.device_id)}">${status}${platformLabel(device.platform)} · ${escapeHtml(device.device_id)}</option>`;
+  }).join("");
   if ([...select.options].some((option) => option.value === current)) select.value = current;
+  renderDeviceStatusRow(devices);
+  return devices;
+}
+
+const DEVICE_ICONS = {
+  windows: `<svg viewBox="0 0 24 24"><path d="M3 12V6.5l8-1.1V12H3zm0 .5h8v6.6l-8-1.1V12.5zM12 5.3l9-1.3v8h-9V5.3zm0 7.2h9v8l-9-1.3v-6.7z"/></svg>`,
+  android: `<svg viewBox="0 0 24 24"><path d="M6 18c0 .55.45 1 1 1h1v3.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V19h2v3.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V19h1c.55 0 1-.45 1-1V8H6v10zM3.5 8C2.67 8 2 8.67 2 9.5v7c0 .83.67 1.5 1.5 1.5S5 17.33 5 16.5v-7C5 8.67 4.33 8 3.5 8zm17 0c-.83 0-1.5.67-1.5 1.5v7c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5v-7c0-.83-.67-1.5-1.5-1.5zm-4.97-5.84l1.3-1.3c.2-.2.2-.51 0-.71-.2-.2-.51-.2-.71 0l-1.48 1.48A5.84 5.84 0 0012 1c-.96 0-1.86.23-2.66.63L7.85.15c-.2-.2-.51-.2-.71 0-.2.2-.2.51 0 .71l1.31 1.31A5.983 5.983 0 006 7h12c0-2.12-1.1-3.98-2.74-5.03-.09-.06-.18-.12-.27-.18zM10 5H9V4h1v1zm5 0h-1V4h1v1z"/></svg>`,
+};
+
+// 首页 hero 的设备在线徽标（源自服务器端 Codex 实现，改为复用 /api/v1/devices 心跳数据）
+function renderDeviceStatusRow(devices) {
+  const container = document.getElementById("deviceStatusRow");
+  if (!container) return;
+  container.innerHTML = devices.map((device) => {
+    const icon = DEVICE_ICONS[device.platform] || DEVICE_ICONS.windows;
+    const cls = device.is_online ? "device-pill live" : "device-pill offline";
+    let label;
+    if (device.is_online) {
+      label = "在线";
+    } else if (device.last_seen) {
+      const secondsAgo = Math.max(0, Math.round((Date.now() - new Date(device.last_seen).getTime()) / 1000));
+      label = secondsAgo < 60 ? "刚刚活跃" : `${formatDuration(secondsAgo)}前`;
+    } else {
+      label = "无数据";
+    }
+    return `<span class="${cls}" title="${escapeHtml(device.device_id)}">${icon}<span class="dot"></span>${label}</span>`;
+  }).join("");
 }
 
 function renderChart(items) {
   const visible = items.filter((item) => item.seconds > 0);
+  const colorFor = (name) => CATEGORY_COLORS[name] || PURPOSE_FALLBACK_COLORS[visible.findIndex((item) => item.category === name) % PURPOSE_FALLBACK_COLORS.length] || "#b88cff";
   const legend = document.getElementById("legend");
   legend.innerHTML = items.map((item) => `
     <div class="legend-row">
-      <span class="legend-dot" style="background:${CATEGORY_COLORS[item.category]}"></span>
+      <span class="legend-dot" style="background:${colorFor(item.category)}"></span>
       <span>${item.category}</span><b>${item.percent}%</b>
-      <span class="fallback-bar"><i style="width:${item.percent}%;background:${CATEGORY_COLORS[item.category]}"></i></span>
+      <span class="fallback-bar"><i style="width:${item.percent}%;background:${colorFor(item.category)}"></i></span>
     </div>`).join("");
 
   if (!window.echarts) {
@@ -155,7 +261,7 @@ function renderChart(items) {
       data: visible.length ? visible.map((item) => ({
         name: item.category,
         value: item.seconds,
-        itemStyle: { color: CATEGORY_COLORS[item.category] },
+        itemStyle: { color: colorFor(item.category) },
       })) : [{ name: "暂无数据", value: 1, itemStyle: { color: "#263430" } }],
     }],
     graphic: [{
@@ -165,7 +271,7 @@ function renderChart(items) {
       type: "text", left: "center", top: "51%",
       style: { text: visible.length ? formatTrackedHours(items.reduce((sum, item) => sum + item.seconds, 0)) : "—", fill: "#eff7f2", font: "600 20px Segoe UI", textAlign: "center" },
     }],
-  });
+  }, true);
 }
 
 function renderTimeStack(segments) {
@@ -254,14 +360,24 @@ function renderTimeStack(segments) {
 function setDistributionView(view) {
   const donut = document.getElementById("chart");
   const stack = document.getElementById("timeStackChart");
+  const legend = document.getElementById("legend");
+  distributionView = view;
   const showStack = view === "stack";
   donut.style.display = showStack ? "none" : "block";
   stack.classList.toggle("is-visible", showStack);
-  document.querySelectorAll(".view-switch-button").forEach((button) => {
+  legend.style.display = showStack ? "none" : "grid";
+  document.querySelectorAll('[data-view]').forEach((button) => {
     const active = button.dataset.view === view;
     button.classList.toggle("is-active", active);
     button.setAttribute("aria-selected", String(active));
   });
+  if (view === "purpose") {
+    fetch(withDevice("/api/v1/summary/today?dimension=purpose"))
+      .then((response) => response.ok ? response.json() : null)
+      .then((summary) => { if (summary) renderChart(summary.categories); })
+      .catch(() => {});
+    return;
+  }
   if (showStack) {
     renderTimeStack(window.timelineSegments || []);
     requestAnimationFrame(() => timeStackChartInstance?.resize());
@@ -274,28 +390,36 @@ async function loadDashboard(showSuccess = false) {
   button.textContent = "刷新中…";
   try {
     await loadDevices();
-    const [timelineResponse, summaryResponse] = await Promise.all([
+    const requests = [
       fetch(withDevice("/api/v1/timeline/today")),
       fetch(withDevice("/api/v1/summary/today")),
-    ]);
-    if (!timelineResponse.ok || !summaryResponse.ok) throw new Error("后端暂时不可用");
-    const timeline = await timelineResponse.json();
-    const summary = await summaryResponse.json();
-    const segments = timeline.segments;
-    window.timelineSegments = segments;
+      fetch(withDevice("/api/v1/insights/today")),
+    ];
+    if (timelineView === "combined") {
+      requests.push(fetch("/api/v1/timeline/combined"));
+    }
+    const responses = await Promise.all(requests);
+    if (responses.some((response) => !response.ok)) throw new Error("后端暂时不可用");
+    const [timeline, summary, insights, combined] = await Promise.all(responses.map((response) => response.json()));
+    const segments = timelineView === "combined" ? combined.segments : timeline.segments;
+    window.timelineSegments = timeline.segments;
+    latestInsights = insights;
 
     renderTimeline(segments);
-    renderChart(summary.categories);
-    if (document.querySelector(".view-switch-button.is-active")?.dataset.view === "stack") {
-      renderTimeStack(segments);
+    if (distributionView !== "purpose") {
+      renderChart(summary.categories);
     }
-    document.getElementById("segmentCount").textContent = segments.length;
+    if (distributionView === "stack") {
+      renderTimeStack(timeline.segments);
+    }
+    renderInsights(insights);
+    document.getElementById("segmentCount").textContent = timeline.segments.length;
     document.getElementById("trackedTime").textContent = formatTrackedHours(summary.total_seconds);
     document.getElementById("trackedLabel").textContent = selectedDevice ? "该设备覆盖时长" : "设备与无设备时长";
     const focus = summary.categories.filter((item) => item.category === "学习" || item.category === "工作").reduce((sum, item) => sum + item.seconds, 0);
     document.getElementById("focusRate").textContent = summary.total_seconds ? `${Math.round(focus * 100 / summary.total_seconds)}%` : "0%";
 
-    const current = segments.at(-1);
+    const current = timeline.segments.at(-1);
     if (current) {
       const isFresh = Date.now() - new Date(current.end_time).getTime() < 120_000;
       document.getElementById("currentTitle").textContent = `${isFresh ? "正在" : "最近"}${current.category}：${current.description}`;
@@ -323,13 +447,27 @@ document.getElementById("deviceFilter").addEventListener("change", (event) => {
 });
 document.getElementById("timelineOrder").addEventListener("change", (event) => {
   timelineOrder = event.target.value;
-  renderTimeline(window.timelineSegments || []);
+  loadDashboard(false);
+});
+document.querySelectorAll("[data-timeline-view]").forEach((button) => {
+  button.addEventListener("click", () => {
+    timelineView = button.dataset.timelineView;
+    document.querySelectorAll("[data-timeline-view]").forEach((item) => {
+      const active = item.dataset.timelineView === timelineView;
+      item.classList.toggle("is-active", active);
+      item.setAttribute("aria-selected", String(active));
+    });
+    loadDashboard(false);
+  });
 });
 window.addEventListener("resize", () => chartInstance?.resize());
 window.addEventListener("resize", () => timeStackChartInstance?.resize());
-document.querySelector(".view-switch")?.addEventListener("click", (event) => {
-  const button = event.target.closest(".view-switch-button");
-  if (button) setDistributionView(button.dataset.view);
+document.querySelectorAll(".view-switch").forEach((group) => {
+  if (!group.querySelector("[data-view]")) return;
+  group.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-view]");
+    if (button) setDistributionView(button.dataset.view);
+  });
 });
 loadDashboard();
 window.setInterval(() => loadDashboard(false), 30_000);

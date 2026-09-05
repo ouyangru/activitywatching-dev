@@ -123,6 +123,21 @@
             android:layout_marginTop="8dp"
             android:text="立即采集并上传" />
 
+        <Button
+            android:id="@+id/batteryButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="申请忽略电池优化" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="OPPO / vivo / 一加手机请额外设置：系统设置 → 电池 → 应用耗电管理 → 行迹 → 允许完全后台行为；并在最近任务中下拉锁定本应用。否则系统仍可能杀掉后台服务。"
+            android:textColor="#8a6d3b"
+            android:textSize="13sp" />
+
         <TextView
             android:id="@+id/runtimeStatus"
             android:layout_width="match_parent"
@@ -138,7 +153,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
-            android:text="说明：调试版允许向局域网 HTTP 地址上传；正式发布版默认只接受 HTTPS。系统可能延迟后台任务，但事件本身带时间戳，不会把十五分钟误算成一个应用。"
+            android:text="说明：保存启动后会出现常驻通知，前台服务每分钟采集一次并即时上传；WorkManager 定时任务保留作为兜底，即使服务被系统杀死，重新运行后也会按游标补齐断档数据。事件本身带时间戳，不会把后台间隔误算成应用使用。"
             android:textColor="#5C7167"
             android:textSize="13sp" />
     </LinearLayout>

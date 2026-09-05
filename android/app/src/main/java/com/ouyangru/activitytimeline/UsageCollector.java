@@ -13,6 +13,34 @@ import java.util.List;
 final class UsageCollector {
     private static final Object COLLECTION_LOCK = new Object();
 
+    /**
+     * 系统 UI（通知栏、锁屏、最近任务）和桌面 Launcher 的 RESUMED 事件不代表
+     * 用户在"使用应用"：下拉通知栏、回桌面的瞬间都被视为上一个应用的延续，
+     * 否则时间线会被切成大量"正在使用桌面/系统界面"的碎片。
+     */
+    private static boolean isIgnoredPackage(String packageName) {
+        if (packageName == null || packageName.isEmpty()) {
+            return true;
+        }
+        if (packageName.equals("com.android.systemui")
+            || packageName.equals("com.google.android.systemui")
+            || packageName.contains(".inputmethod")) {
+            return true;
+        }
+        String lower = packageName.toLowerCase(java.util.Locale.ROOT);
+        return lower.startsWith("com.android.launcher")
+            || lower.equals("com.miui.home")
+            || lower.equals("com.huawei.android.launcher")
+            || lower.equals("com.hihonor.launcher")
+            || lower.equals("com.oppo.launcher")
+            || lower.equals("com.oppo.communitylauncher")
+            || lower.equals("com.vivo.launcher")
+            || lower.equals("com.bbk.launcher")
+            || lower.equals("com.sec.android.app.launcher")
+            || lower.equals("com.google.android.apps.nexuslauncher")
+            || lower.equals("com.teslacoilsw.launcher");
+    }
+
     private UsageCollector() {}
 
     static int collect(Context context, QueueDatabase queue) throws Exception {
@@ -74,7 +102,7 @@ final class UsageCollector {
         String packageName,
         long time
     ) {
-        if (packageName == null || packageName.isBlank()) {
+        if (isIgnoredPackage(packageName)) {
             return;
         }
         if (!state.screenInteractive) {

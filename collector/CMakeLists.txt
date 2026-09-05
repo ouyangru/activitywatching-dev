@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(activity_collector VERSION 0.1.1 LANGUAGES CXX)
+project(activity_collector VERSION 0.2.0 LANGUAGES CXX)
 
 if(NOT WIN32)
     message(FATAL_ERROR "activity_collector uses Win32 APIs and must be built on Windows")
@@ -19,7 +19,7 @@ target_include_directories(activity_collector PRIVATE include)
 target_compile_features(activity_collector PRIVATE cxx_std_20)
 target_compile_definitions(activity_collector PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
 target_compile_definitions(activity_collector PRIVATE ACTIVITY_COLLECTOR_VERSION="${PROJECT_VERSION}")
-target_link_libraries(activity_collector PRIVATE user32 shell32 winhttp)
+target_link_libraries(activity_collector PRIVATE user32 shell32 winhttp advapi32)
 
 if(MSVC)
     target_compile_options(activity_collector PRIVATE /W4 /permissive- /utf-8)

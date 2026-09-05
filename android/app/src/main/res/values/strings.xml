@@ -1,4 +1,7 @@
 <resources>
     <string name="app_name">行迹</string>
     <string name="permission_title">使用情况访问权限</string>
+    <string name="notification_channel_name">后台采集</string>
+    <string name="notification_channel_description">保持应用使用情况持续记录所需的常驻通知</string>
+    <string name="notification_title">行迹正在记录活动</string>
 </resources>

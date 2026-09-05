@@ -118,3 +118,27 @@
 - **解决：** 生产模式要求至少 32 字符令牌；增加 POST 登录和 Secure/HttpOnly/SameSite Cookie，关闭生产 URL 令牌登录，数据响应禁用缓存，公开健康检查不再暴露记录数量；提供固定 HTTPS 托管及持久磁盘配置。
 - **版本信息：** Activity Timeline 0.3.1，feature/mobile-status-dashboard。
 - **验证：** 本地 WSL 完整测试 20 passed，覆盖拒绝空令牌、登录认证、重启保留记录及重复补传去重；JavaScript 语法检查通过，部署 YAML 可解析。未创建云资源，公网 HTTPS 与移动网络端到端验收待账号部署后执行。
+
+## 2026-09-05T23:10:12+08:00 · Aliyun Public HTTPS Access
+
+- **问题：** 后端仅有本地服务，手机离开局域网无法连接，也没有可用的公网 HTTPS 入口。
+- **根因：** 阿里云实例尚未安装后端、配置网页入口或 IP 证书。
+- **解决：** 在 47.82.104.59 部署后端独立系统服务及持久数据库，配置 Nginx、正式 IP 证书、每日两次自动续期与证书重载，启用开机启动。
+- **版本信息：** Activity Timeline 0.3.1；Ubuntu 24.04；Certbot 5.8.0。
+- **验证：** 公网证书验证通过，健康检查 200，未认证数据 401，登录 204，认证手机页 200；服务 active，模拟续期成功；本地测试 20 passed。云端数据库为空，手机移动网络上传和旧历史迁移尚未执行。
+
+## 2026-09-05T23:15:03+08:00 · Android Gradle Bootstrap Timeout
+
+- **问题：** Android 首次构建无法下载 Gradle 9.6.0，10 秒后连接超时。
+- **根因：** Gradle 分发地址重定向到 GitHub，Wrapper 未继承 Windows 本地代理，且下载超时仅为 10 秒。
+- **解决：** 将 Wrapper 超时提高至 120 秒，并在 D 盘 Gradle 用户目录配置现有 `127.0.0.1:7897` 代理。
+- **版本信息：** Android Collector 0.2.0-debug；Gradle Wrapper 9.6.0。
+- **验证：** Gradle 与依赖均缓存到 D 盘，`:app:assembleDebug` 成功，生成 7.48 MB APK（SHA-256 `7BAB722396C8D8082410E7D677073A05D5CBD56BA39648E66E1E010475BC2865`）。
+
+## 2026-09-06T02:20:00+08:00 · Cross-Device Merger Development Fixes
+
+- **问题：** 跨设备主活动合并功能开发中出现三类缺陷：洞察接口对 `sqlite3.Row` 调用 `.get()` 抛 AttributeError；合并段 `reason` 字段被共享缓存对象污染导致 SOLO 判定失效；相邻同主活动区间因用行对象身份比较而不合并。
+- **根因：** `sqlite3.Row` 不支持 `.get()` 方法；`_Active.reason` 挂在被多区间共享的活动对象上被后写覆盖；合并条件误用对象身份（`is`）而非活动语义键（设备+进程+行为）。
+- **解决：** 洞察函数先 `dict(row)` 转普通字典再安全取 `purpose`；`reason` 从 `_Active` 移到 `_Combined` 逐区间持有；合并条件改用 `_activity_key()` 语义比较。同时无设备占位行补齐 `purpose` 键。
+- **版本信息：** Activity Timeline 0.4.0（merger/insights/heartbeat/daily 功能集）。
+- **验证：** 本地回归 34 passed（含 10 个新测试：固定样例合并、重叠不翻倍、主活动总时长不超当天、结果可重复）；双设备冒烟脚本全链路通过。

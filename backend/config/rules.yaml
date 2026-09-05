@@ -2,27 +2,154 @@ idle_threshold_ms: 300000
 short_switch_seconds: 15
 
 rules:
+  # ============ Android：沟通 ============
   - match:
       platform: "android"
-      process: "^(com\\.tencent\\.mm|com\\.ss\\.android\\.lark)$"
+      process: "^com\\.tencent\\.mm$"
     behavior: "沟通"
     category: "工作"
     description: "使用 {app} 沟通"
 
   - match:
       platform: "android"
-      process: "^(tv\\.danmaku\\.bili|com\\.bilibili\\.app\\.in|com\\.google\\.android\\.youtube|com\\.ss\\.android\\.ugc\\.aweme)$"
+      process: "^com\\.tencent\\.mobileqq$"
+    behavior: "沟通"
+    category: "工作"
+    description: "使用 {app} 沟通"
+
+  - match:
+      platform: "android"
+      process: "^com\\.ss\\.android\\.lark$"
+    behavior: "沟通"
+    category: "工作"
+    description: "使用 {app} 沟通"
+
+  - match:
+      platform: "android"
+      process: "^com\\.alibaba\\.android\\.rimet$"
+    behavior: "沟通"
+    category: "工作"
+    description: "使用钉钉办公"
+
+  - match:
+      platform: "android"
+      process: "^(org\\.telegram\\.messenger|com\\.whatsapp|com\\.skype\\.raider|com\\.google\\.android\\.gm|com\\.android\\.email)$"
+    behavior: "沟通"
+    category: "工作"
+    description: "使用 {app} 沟通"
+
+  # ============ Android：视频娱乐 ============
+  - match:
+      platform: "android"
+      process: "^(tv\\.danmaku\\.bili|com\\.bilibili\\.app\\.in)$"
     behavior: "观看视频"
     category: "娱乐"
     description: "使用 {app} 观看视频"
 
   - match:
       platform: "android"
-      process: "^(com\\.android\\.chrome|com\\.microsoft\\.emmx|org\\.mozilla\\.firefox)$"
+      process: "^com\\.ss\\.android\\.ugc\\.aweme"
+    behavior: "观看视频"
+    category: "娱乐"
+    description: "使用 {app} 观看视频"
+
+  - match:
+      platform: "android"
+      process: "^com\\.smile\\.gifmaker"
+    behavior: "观看视频"
+    category: "娱乐"
+    description: "使用 {app} 观看视频"
+
+  - match:
+      platform: "android"
+      process: "^(com\\.tencent\\.qqlive|com\\.qiyi\\.video|com\\.youku\\.phone|com\\.hunantv\\.imgo\\.activity|com\\.google\\.android\\.youtube|com\\.sohu\\.qihang|tv\\.danmaku\\.bili\\.hd)$"
+    behavior: "观看视频"
+    category: "娱乐"
+    description: "使用 {app} 观看视频"
+
+  # ============ Android：游戏 ============
+  - match:
+      platform: "android"
+      process: "^(com\\.miHoYo\\.Yuanshen|com\\.tencent\\.tmgp\\.sgame|com\\.netease\\.dwrg|com\\.dts\\.freefireth|com\\.riotgames\\.league\\.wildrift|com\\.supercell\\.clashroyale|com\\.supercell\\.brawlstars|com\\.moonton\\.mobilelegends)$"
+    behavior: "玩游戏"
+    category: "娱乐"
+    description: "玩 {app}"
+
+  # ============ Android：社交资讯 ============
+  - match:
+      platform: "android"
+      process: "^com\\.zhihu\\.android$"
+    behavior: "浏览资讯"
+    category: "娱乐"
+    description: "使用 {app} 浏览资讯"
+
+  - match:
+      platform: "android"
+      process: "^com\\.sina\\.weibo"
+    behavior: "浏览资讯"
+    category: "娱乐"
+    description: "使用 {app} 浏览资讯"
+
+  - match:
+      platform: "android"
+      process: "^com\\.xingin\\.xhs$"
+    behavior: "浏览资讯"
+    category: "娱乐"
+    description: "使用 {app} 浏览资讯"
+
+  - match:
+      platform: "android"
+      process: "^(com\\.ss\\.android\\.article\\.news|com\\.tencent\\.news|com\\.netease\\.news)$"
+    behavior: "浏览资讯"
+    category: "娱乐"
+    description: "使用 {app} 看新闻"
+
+  # ============ Android：阅读学习 ============
+  - match:
+      platform: "android"
+      process: "^com\\.tencent\\.weread$"
+    behavior: "阅读"
+    category: "学习"
+    description: "使用 {app} 阅读"
+
+  - match:
+      platform: "android"
+      process: "^(com\\.ichi2\\.anki|com\\.qidian\\.QDReader|com\\.duba\\.reader|com\\.dragonflow\\.reader)$"
+    behavior: "阅读"
+    category: "学习"
+    description: "使用 {app} 阅读"
+
+  - match:
+      platform: "android"
+      process: "^(com\\.ximalaya\\.ting\\.android|cn\\.missevan|com\\.lizhi\\.ted)$"
+    behavior: "收听音频"
+    category: "学习"
+    description: "使用 {app} 收听音频"
+
+  # ============ Android：购物出行（生活事务） ============
+  - match:
+      platform: "android"
+      process: "^(com\\.taobao\\.taobao|com\\.tmall\\.wireless|com\\.jingdong\\.app\\.mall|com\\.xunmeng\\.pinduoduo|com\\.sankuai\\.meituan|com\\.dianping\\.v1|com\\.eg\\.android\\.AlipayGphone|com\\.tencent\\.mobileqq\\.qwallet)$"
+    behavior: "生活事务"
+    category: "其他"
+    description: "使用 {app} 处理生活事务"
+
+  - match:
+      platform: "android"
+      process: "^(com\\.autonavi\\.minimap|com\\.baidu\\.BaiduMap|com\\.tencent\\.map)$"
+    behavior: "出行导航"
+    category: "其他"
+    description: "使用 {app} 导航"
+
+  # ============ Android：浏览器 ============
+  - match:
+      platform: "android"
+      process: "^(com\\.android\\.chrome|com\\.microsoft\\.emmx|org\\.mozilla\\.firefox|com\\.quark\\.browser|com\\.UCMobile|com\\.brook\\.matter|com\\.kiwibrowser\\.browser)$"
     behavior: "浏览网页"
     category: "其他"
     description: "使用 {app} 浏览网页"
 
+  # ============ Windows 规则 ============
   - match:
       process: "^(Code|code-insiders)\\.exe$"
     behavior: "编程"

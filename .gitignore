@@ -15,3 +15,7 @@ android/local.properties
 android/app/build/
 android/build/
 *.apk
+.deployment/
+.workbuddy/
+.codebuddy/
+overview.md

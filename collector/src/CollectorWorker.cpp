@@ -53,8 +53,15 @@ void CollectorWorker::stop() {
 }
 
 void CollectorWorker::run() {
-    auto next_upload_attempt = std::chrono::steady_clock::now();
+    using clock = std::chrono::steady_clock;
+    // The backend marks a device online when a heartbeat arrives within 120s,
+    // so report every 60s. Heartbeat failures use their own backoff and never
+    // delay (or get delayed by) data uploads.
+    constexpr auto kHeartbeatInterval = 60s;
+    auto next_upload_attempt = clock::now();
+    auto next_heartbeat = clock::now();
     unsigned int consecutive_failures = 0;
+    unsigned int heartbeat_failures = 0;
 
     for (;;) {
         std::deque<FeatureSnapshot> snapshots;
@@ -62,11 +69,10 @@ void CollectorWorker::run() {
         {
             std::unique_lock lock(mutex_);
             if (pending_.empty() && !stopping_) {
-                if (uploader_.pending_count() > 0) {
-                    condition_.wait_until(lock, next_upload_attempt, [this] { return stopping_ || !pending_.empty(); });
-                } else {
-                    condition_.wait(lock, [this] { return stopping_ || !pending_.empty(); });
-                }
+                // Wake up for the earliest of: heartbeat due, upload retry due.
+                auto deadline = next_heartbeat;
+                if (uploader_.pending_count() > 0) deadline = std::min(deadline, next_upload_attempt);
+                condition_.wait_until(lock, deadline, [this] { return stopping_ || !pending_.empty(); });
             }
             snapshots.swap(pending_);
             should_stop = stopping_;
@@ -76,7 +82,19 @@ void CollectorWorker::run() {
         // Even when WinHTTP blocks, the hook/message thread remains independent.
         for (auto& snapshot : snapshots) persist(std::move(snapshot));
 
-        const auto now = std::chrono::steady_clock::now();
+        auto now = clock::now();
+        if (!should_stop && now >= next_heartbeat) {
+            if (uploader_.post_heartbeat(device_id_)) {
+                heartbeat_failures = 0;
+                next_heartbeat = now + kHeartbeatInterval;
+            } else {
+                const auto exponent = std::min(heartbeat_failures, 3U);
+                ++heartbeat_failures;
+                next_heartbeat = now + std::chrono::seconds(std::min(300U, 60U * (1U << exponent)));
+            }
+        }
+
+        now = clock::now();
         if (!should_stop && uploader_.pending_count() > 0 && now >= next_upload_attempt) {
             bool upload_ok = true;
             std::size_t batches_sent = 0;
@@ -92,12 +110,12 @@ void CollectorWorker::run() {
 
             if (upload_ok) {
                 consecutive_failures = 0;
-                next_upload_attempt = std::chrono::steady_clock::now();
+                next_upload_attempt = clock::now();
             } else {
                 const auto exponent = std::min(consecutive_failures, 6U);
                 const auto delay_seconds = std::min(300U, 5U * (1U << exponent));
                 ++consecutive_failures;
-                next_upload_attempt = std::chrono::steady_clock::now() + std::chrono::seconds(delay_seconds);
+                next_upload_attempt = clock::now() + std::chrono::seconds(delay_seconds);
             }
         }
 
