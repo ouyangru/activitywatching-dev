@@ -150,3 +150,11 @@
 - **解决：** CMakeLists 非 MSVC 分支增加 `-static-libgcc -static-libstdc++` 链接选项，exe 仅依赖系统 DLL（ADVAPI32/KERNEL32/msvcrt/SHELL32/USER32/WINHTTP）。
 - **版本信息：** activity_collector 0.2.0（MinGW 14.2 / CMake 3.31）
 - **验证：** `objdump -p` 确认导入表不含 MinGW 运行时 DLL；以仅含 SystemRoot 的最小环境变量分离启动，进程稳定驻留；心跳与数据上传链路经本地桩服务器端到端验证（heartbeat 请求体符合后端 `HeartbeatRequest` 契约，`events/batch` 收到 503 后离线队列 606 条完整保留并按退避重试）。
+
+## 2026-09-06T02:50:00+08:00 · Agent Tests Broken by Local .env
+
+- **问题：** 本地 `backend/.env` 填入真实 DeepSeek Key 后，`test_agent_disabled_endpoints_unchanged` 等 2 个"未配置 Agent"测试失败（`enabled` 断言为 True）。
+- **根因：** `main.py` 模块导入时 `load_dotenv(backend/.env)` 把开发机真实配置注入环境，测试未隔离 `ACTIVITYWATCH_AGENT_*` 变量，"默认关闭"场景随开发机配置漂移。
+- **解决：** `tests/test_agent.py` 增加 autouse fixture，测试期间 `monkeypatch.delenv` 清除全部 4 个 Agent 环境变量，保证测试封闭性。
+- **版本信息：** Activity Timeline 0.4.0（agent/summarizer/memory 功能集）。
+- **验证：** 本地回归 60 passed（填 Key 状态下两遍稳定）。
