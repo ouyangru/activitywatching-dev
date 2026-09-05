@@ -13,7 +13,8 @@
 
 class BatchUploader {
 public:
-    BatchUploader(std::wstring server_url, std::filesystem::path queue_path, std::size_t batch_size, std::size_t max_queue);
+    BatchUploader(std::wstring server_url, std::wstring api_token, std::filesystem::path queue_path,
+                  std::size_t batch_size, std::size_t max_queue);
     bool enqueue(const FeatureWindow& window);
     bool flush();
     [[nodiscard]] std::size_t pending_count() const;
@@ -34,6 +35,7 @@ private:
     [[nodiscard]] bool post_batch(const std::vector<std::string>& lines) const;
 
     std::wstring server_url_;
+    std::wstring api_token_;
     std::filesystem::path queue_path_;
     std::size_t batch_size_;
     std::size_t max_queue_;

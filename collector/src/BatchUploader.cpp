@@ -51,9 +51,10 @@ std::string iso8601(std::chrono::system_clock::time_point point) {
 }
 }
 
-BatchUploader::BatchUploader(std::wstring server_url, std::filesystem::path queue_path, std::size_t batch_size,
-                             std::size_t max_queue)
-    : server_url_(std::move(server_url)), queue_path_(std::move(queue_path)), batch_size_(batch_size),
+BatchUploader::BatchUploader(std::wstring server_url, std::wstring api_token, std::filesystem::path queue_path,
+                                                         std::size_t batch_size, std::size_t max_queue)
+        : server_url_(std::move(server_url)), api_token_(std::move(api_token)), queue_path_(std::move(queue_path)),
+            batch_size_(batch_size),
       max_queue_(max_queue) {
     const bool endpoint_valid = parse_endpoint();
     (void)endpoint_valid;
@@ -189,8 +190,9 @@ bool BatchUploader::post_batch(const std::vector<std::string>& lines) const {
                                            endpoint_.secure ? WINHTTP_FLAG_SECURE : 0);
     bool success = false;
     if (request) {
-        const wchar_t* headers = L"Content-Type: application/json; charset=utf-8\r\n";
-        if (WinHttpSendRequest(request, headers, static_cast<DWORD>(-1),
+        std::wstring headers = L"Content-Type: application/json; charset=utf-8\r\n";
+        if (!api_token_.empty()) headers += L"Authorization: Bearer " + api_token_ + L"\r\n";
+        if (WinHttpSendRequest(request, headers.c_str(), static_cast<DWORD>(-1),
                                const_cast<char*>(payload.data()), static_cast<DWORD>(payload.size()),
                                static_cast<DWORD>(payload.size()), 0) &&
             WinHttpReceiveResponse(request, nullptr)) {

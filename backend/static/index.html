@@ -56,8 +56,13 @@
               <p class="eyebrow">DISTRIBUTION</p>
               <h2 id="distributionTitle">时间分布</h2>
             </div>
+            <div class="view-switch" role="tablist" aria-label="时间分布视图">
+              <button class="view-switch-button is-active" type="button" role="tab" aria-selected="true" data-view="donut">分类</button>
+              <button class="view-switch-button" type="button" role="tab" aria-selected="false" data-view="stack">按时间</button>
+            </div>
           </div>
           <div id="chart" class="chart" role="img" aria-label="今日分类时间占比"></div>
+          <div id="timeStackChart" class="chart time-stack-chart" role="img" aria-label="今日按时间分类堆叠"></div>
           <div id="legend" class="legend"></div>
         </section>
 

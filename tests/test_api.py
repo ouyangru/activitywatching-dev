@@ -1,3 +1,9 @@
+from pathlib import Path
+
+from fastapi.testclient import TestClient
+
+from backend.app.main import create_app
+
 from .conftest import event
 
 
@@ -47,4 +53,17 @@ def test_rejects_naive_timestamp(client):
         json={"events": [event(1, "2026-09-05T00:20:00")]},
     )
     assert response.status_code == 422
+
+
+def test_api_token_protects_data_endpoints(tmp_path: Path):
+    app = create_app(
+        db_path=tmp_path / "auth.db",
+        rules_path=Path(__file__).parents[1] / "backend" / "config" / "rules.yaml",
+        timezone_name="Asia/Shanghai",
+        api_token="test-token",
+    )
+    with TestClient(app) as auth_client:
+        assert auth_client.get("/api/v1/timeline/today").status_code == 401
+        assert auth_client.get("/api/v1/timeline/today", headers={"Authorization": "Bearer test-token"}).status_code == 200
+        assert auth_client.get("/api/v1/health").status_code == 200
 

@@ -11,11 +11,12 @@ CollectorWorker::CollectorWorker(
     std::wstring device_id,
     std::filesystem::path state_path,
     std::wstring server_url,
+    std::wstring api_token,
     std::filesystem::path queue_path,
     std::size_t batch_size,
     std::size_t max_queue
 )
-    : uploader_(std::move(server_url), std::move(queue_path), batch_size, max_queue),
+    : uploader_(std::move(server_url), std::move(api_token), std::move(queue_path), batch_size, max_queue),
       device_id_(std::move(device_id)),
       state_path_(std::move(state_path)),
       sequence_(load_sequence()) {}

@@ -17,7 +17,7 @@ def test_absorbs_ten_second_interruption_between_same_activity(client):
 
 
 def test_idle_window_has_priority_over_process_rule(client):
-    idle = event(1, "2026-09-05T00:20:00Z", idle_ms=120_000)
+    idle = event(1, "2026-09-05T00:20:00Z", idle_ms=300_000)
     client.post("/api/v1/events/batch", json={"events": [idle]})
     segment = client.get("/api/v1/timeline/today?day=2026-09-05").json()["segments"][0]
 

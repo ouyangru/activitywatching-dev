@@ -7,6 +7,7 @@ const CATEGORY_COLORS = {
 };
 const CATEGORIES = Object.keys(CATEGORY_COLORS);
 let chartInstance = null;
+let timeStackChartInstance = null;
 
 function formatClock(iso) {
   return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
@@ -128,6 +129,94 @@ function renderChart(items) {
   });
 }
 
+function renderTimeStack(segments) {
+  if (!window.echarts) return;
+  const chart = document.getElementById("timeStackChart");
+  timeStackChartInstance ||= echarts.init(chart);
+  const rows = ["00:00—08:00", "08:00—16:00", "16:00—24:00"];
+  const segmentParts = [];
+  segments.forEach((segment) => {
+    const startDate = new Date(segment.start_time);
+    const endDate = new Date(segment.end_time);
+    if (!Number.isFinite(startDate.getTime()) || !Number.isFinite(endDate.getTime())) return;
+    let cursor = startDate.getTime();
+    const end = endDate.getTime();
+    while (cursor < end) {
+      const current = new Date(cursor);
+      const dayStart = new Date(current.getFullYear(), current.getMonth(), current.getDate()).getTime();
+      const elapsedHours = (cursor - dayStart) / 3600000;
+      const row = Math.min(2, Math.floor(elapsedHours / 8));
+      const rowEnd = dayStart + (row + 1) * 8 * 3600000;
+      const partEnd = Math.min(end, rowEnd);
+      const rowStart = dayStart + row * 8 * 3600000;
+      segmentParts.push({
+        category: segment.category,
+        row,
+        start: (cursor - rowStart) / 3600000,
+        end: (partEnd - rowStart) / 3600000,
+        segment,
+      });
+      cursor = partEnd;
+    }
+  });
+  const seriesData = CATEGORIES.map((category) => ({
+    name: category,
+    type: "custom",
+    coordinateSystem: "cartesian2d",
+    itemStyle: { color: CATEGORY_COLORS[category] },
+    data: segmentParts
+      .filter((segment) => segment.category === category)
+      .map((part) => [part.row, part.start, part.end, part.segment]),
+    renderItem(params, api) {
+      const start = api.coord([api.value(1), api.value(0)]);
+      const end = api.coord([api.value(2), api.value(0)]);
+      const rowHeight = Math.abs(api.size([0, 1])[1]);
+      return {
+        type: "rect",
+        shape: { x: start[0], y: start[1] - rowHeight * .24, width: Math.max(end[0] - start[0], 2), height: rowHeight * .48, r: 3 },
+        style: api.style(),
+      };
+    },
+  }));
+  timeStackChartInstance.setOption({
+    animation: false,
+    grid: { left: 72, right: 10, top: 30, bottom: 22 },
+    tooltip: {
+      trigger: "item",
+      formatter: (params) => {
+        const segment = params.data[3];
+        return `${segment.category}<br>${segment.behavior}<br>${formatClock(segment.start_time)}—${formatClock(segment.end_time)}`;
+      },
+    },
+    legend: { show: true, top: 0, textStyle: { color: "#91a49e", fontSize: 10 }, itemWidth: 10, itemHeight: 8 },
+    xAxis: {
+      type: "value",
+      min: 0,
+      max: 8,
+      interval: 2,
+      axisLabel: { color: "#71847d", fontSize: 10, formatter: (value) => `${String(value).padStart(2, "0")}:00` },
+      axisLine: { lineStyle: { color: "rgba(202,230,218,.12)" } },
+      splitLine: { lineStyle: { color: "rgba(202,230,218,.07)" } },
+    },
+    yAxis: { type: "category", inverse: true, data: rows, axisLabel: { color: "#91a49e", fontSize: 10 }, axisLine: { show: false }, axisTick: { show: false }, splitLine: { show: false } },
+    series: seriesData,
+  }, true);
+}
+
+function setDistributionView(view) {
+  const donut = document.getElementById("chart");
+  const stack = document.getElementById("timeStackChart");
+  const showStack = view === "stack";
+  donut.style.display = showStack ? "none" : "block";
+  stack.classList.toggle("is-visible", showStack);
+  document.querySelectorAll(".view-switch-button").forEach((button) => {
+    const active = button.dataset.view === view;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+  if (showStack) timeStackChartInstance?.resize();
+}
+
 async function loadDashboard(showSuccess = false) {
   const button = document.getElementById("refreshButton");
   button.disabled = true;
@@ -144,6 +233,7 @@ async function loadDashboard(showSuccess = false) {
 
     renderTimeline(segments);
     renderChart(summary.categories);
+    renderTimeStack(segments);
     document.getElementById("segmentCount").textContent = segments.length;
     document.getElementById("trackedTime").textContent = formatDuration(summary.total_seconds);
     const focus = summary.categories.filter((item) => item.category === "学习" || item.category === "工作").reduce((sum, item) => sum + item.seconds, 0);
@@ -172,5 +262,9 @@ async function loadDashboard(showSuccess = false) {
 document.getElementById("todayLabel").textContent = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "long" }).format(new Date());
 document.getElementById("refreshButton").addEventListener("click", () => loadDashboard(true));
 window.addEventListener("resize", () => chartInstance?.resize());
+window.addEventListener("resize", () => timeStackChartInstance?.resize());
+document.querySelectorAll(".view-switch-button").forEach((button) => {
+  button.addEventListener("click", () => setDistributionView(button.dataset.view));
+});
 loadDashboard();
 window.setInterval(() => loadDashboard(false), 30_000);

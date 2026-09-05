@@ -10,6 +10,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r backend/requirements-dev.txt
 cp backend/.env.example backend/.env
+# Edit backend/.env and set a long random ACTIVITYWATCH_API_TOKEN before exposing the service.
 uvicorn backend.app.main:app --host 0.0.0.0 --port 8765
 ```
 
@@ -48,6 +49,7 @@ curl http://localhost:8765/api/v1/health
 cmake -S collector -B collector/build -G "Visual Studio 17 2022" -A x64
 cmake --build collector/build --config Release
 collector\build\Release\activity_collector.exe --server http://localhost:8765
+collector\build\Release\activity_collector.exe --server http://localhost:8765 --token "same-token-as-backend"
 ```
 
 也可用当前已安装的 MinGW：

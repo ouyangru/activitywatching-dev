@@ -31,6 +31,7 @@ public:
         std::wstring device_id,
         std::filesystem::path state_path,
         std::wstring server_url,
+        std::wstring api_token,
         std::filesystem::path queue_path,
         std::size_t batch_size,
         std::size_t max_queue

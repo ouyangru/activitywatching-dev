@@ -1,4 +1,4 @@
-idle_threshold_ms: 60000
+idle_threshold_ms: 300000
 short_switch_seconds: 15
 
 rules:

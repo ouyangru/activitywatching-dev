@@ -12,6 +12,7 @@ def client(tmp_path: Path) -> TestClient:
         db_path=tmp_path / "test.db",
         rules_path=Path(__file__).parents[1] / "backend" / "config" / "rules.yaml",
         timezone_name="Asia/Shanghai",
+        api_token="",
     )
     with TestClient(app) as test_client:
         yield test_client

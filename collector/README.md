@@ -31,6 +31,7 @@ cmake --build collector/build
 ```powershell
 activity_collector.exe `
   --server http://localhost:8765 `
+  --token "replace-with-the-same-api-token" `
   --interval 10 `
   --batch-size 12 `
   --max-queue 60480
@@ -39,6 +40,7 @@ activity_collector.exe `
 - `--interval` 是特征窗口秒数，默认 10 秒。
 - `--batch-size` 是一次最多上传的窗口数，默认 12。
 - `--max-queue` 是离线队列上限，默认 60,480 条，约七天。
+- `--token` 是后端 `ACTIVITYWATCH_API_TOKEN` 对应的 Bearer Token；启用后必须提供，否则数据会留在本地离线队列。
 - `--console` 会显示诊断控制台；诊断中不打印窗口标题或任何剪贴板内容。
 
 程序在通知区域创建一个托盘图标。右键选择“退出采集器”可以干净地停止钩子并尝试最后一次上传。

@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import os
+import secrets
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 
@@ -28,6 +29,7 @@ def create_app(
     db_path: str | Path | None = None,
     rules_path: str | Path | None = None,
     timezone_name: str | None = None,
+    api_token: str | None = None,
 ) -> FastAPI:
     database = Database(db_path or os.getenv("ACTIVITYWATCH_DB_PATH", str(DEFAULT_DB)))
     analyzer = ActivityAnalyzer(
@@ -43,6 +45,21 @@ def create_app(
     )
     application.state.database = database
     application.state.analyzer = analyzer
+    application.state.api_token = api_token if api_token is not None else os.getenv("ACTIVITYWATCH_API_TOKEN", "")
+
+    def require_auth(request: Request, activity_token: str | None = Cookie(default=None)) -> None:
+        configured_token = application.state.api_token
+        if not configured_token:
+            return
+        authorization = request.headers.get("authorization", "")
+        bearer = authorization.removeprefix("Bearer ").strip() if authorization.startswith("Bearer ") else ""
+        header_token = request.headers.get("x-activity-token", "")
+        if not any(
+            secrets.compare_digest(candidate, configured_token)
+            for candidate in (bearer, header_token, activity_token or "")
+            if candidate
+        ):
+            raise HTTPException(status_code=401, detail="authentication required")
 
     @application.get("/api/v1/health")
     def health() -> dict[str, Any]:
@@ -53,7 +70,7 @@ def create_app(
         }
 
     @application.post("/api/v1/events/batch")
-    def ingest_batch(payload: BatchRequest) -> dict[str, Any]:
+    def ingest_batch(payload: BatchRequest, _: None = Depends(require_auth)) -> dict[str, Any]:
         accepted, duplicates = database.insert_windows(payload.events)
         affected = sorted({(analyzer.day_for(event.start_time), event.device_id) for event in payload.events})
         rebuilt = sum(analyzer.rebuild_day(day, device_id) for day, device_id in affected)
@@ -65,6 +82,7 @@ def create_app(
 
     @application.get("/api/v1/timeline/today")
     def timeline_today(
+        _: None = Depends(require_auth),
         day: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
         device_id: str | None = None,
     ) -> dict[str, Any]:
@@ -78,6 +96,7 @@ def create_app(
 
     @application.get("/api/v1/summary/today")
     def summary_today(
+        _: None = Depends(require_auth),
         day: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
         device_id: str | None = None,
     ) -> dict[str, Any]:
@@ -100,7 +119,7 @@ def create_app(
         return {"total_seconds": total, "categories": items}
 
     @application.patch("/api/v1/segments/{segment_id}")
-    def patch_segment(segment_id: int, correction: SegmentCorrection) -> dict[str, Any]:
+    def patch_segment(segment_id: int, correction: SegmentCorrection, _: None = Depends(require_auth)) -> dict[str, Any]:
         updated = database.correct_segment(segment_id, correction.category)
         if updated is None:
             raise HTTPException(status_code=404, detail="segment not found")
@@ -109,7 +128,11 @@ def create_app(
     application.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     @application.get("/", include_in_schema=False)
-    def index() -> FileResponse:
+    def index(token: str | None = Query(default=None)) -> Response:
+        if token and application.state.api_token and secrets.compare_digest(token, application.state.api_token):
+            redirect = RedirectResponse(url="/", status_code=303)
+            redirect.set_cookie("activity_token", token, httponly=True, samesite="lax")
+            return redirect
         return FileResponse(STATIC_DIR / "index.html")
 
     return application

@@ -25,6 +25,7 @@ constexpr UINT kExitCommand = 200;
 
 struct Options {
     std::wstring server{L"http://localhost:8765"};
+    std::wstring token;
     std::uint32_t interval_seconds{10};
     std::size_t batch_size{12};
     std::size_t max_queue{60480};
@@ -61,6 +62,7 @@ Options parse_options() {
             return index + 1 < arguments.size() ? arguments[++index] : L"";
         };
         if (arguments[index] == L"--server") options.server = take_value();
+        else if (arguments[index] == L"--token") options.token = take_value();
         else if (arguments[index] == L"--interval") options.interval_seconds = std::max(1UL, std::stoul(take_value()));
         else if (arguments[index] == L"--batch-size") options.batch_size = std::max<std::size_t>(1, std::stoull(take_value()));
         else if (arguments[index] == L"--max-queue") options.max_queue = std::max<std::size_t>(1, std::stoull(take_value()));
@@ -159,6 +161,12 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l
 }
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
+    HANDLE instance_mutex = CreateMutexW(nullptr, TRUE, L"Local\\ActivityTimelineCollector");
+    if (!instance_mutex || GetLastError() == ERROR_ALREADY_EXISTS) {
+        if (instance_mutex) CloseHandle(instance_mutex);
+        return 0;
+    }
+
     const Options options = parse_options();
     if (options.console) {
         AllocConsole();
@@ -170,7 +178,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     Application application;
     application.interval_seconds = options.interval_seconds;
     application.worker = std::make_unique<CollectorWorker>(
-        device_id(), directory / L"sequence.txt", options.server, directory / L"queue.jsonl",
+        device_id(), directory / L"sequence.txt", options.server, options.token, directory / L"queue.jsonl",
         options.batch_size, options.max_queue);
     application.worker->start();
     g_application = &application;
@@ -203,5 +211,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     }
     application.worker->stop();
     g_application = nullptr;
+    CloseHandle(instance_mutex);
     return static_cast<int>(message.wParam);
 }

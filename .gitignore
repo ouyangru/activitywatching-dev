@@ -1,9 +1,11 @@
 .venv/
+.venv-wsl/
 __pycache__/
 *.py[cod]
 .pytest_cache/
 backend/data/*.db
 backend/data/*.db-*
+backend/.env
 collector/build/
 collector/out/
 .idea/
