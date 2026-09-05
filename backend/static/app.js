@@ -8,6 +8,17 @@ const CATEGORY_COLORS = {
 const CATEGORIES = Object.keys(CATEGORY_COLORS);
 let chartInstance = null;
 let timeStackChartInstance = null;
+let selectedDevice = "";
+
+function platformLabel(platform) {
+  return platform === "android" ? "Android" : "Windows";
+}
+
+function withDevice(path) {
+  if (!selectedDevice) return path;
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}device_id=${encodeURIComponent(selectedDevice)}`;
+}
 
 function formatClock(iso) {
   return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
@@ -36,7 +47,7 @@ function showToast(message) {
 function renderTimeline(segments) {
   const target = document.getElementById("timeline");
   if (!segments.length) {
-    target.innerHTML = `<div class="empty">今天还没有行为数据。<br>启动 Windows Collector，或运行 <code>python scripts/seed_demo.py</code> 查看演示。</div>`;
+    target.innerHTML = `<div class="empty">今天还没有行为数据。<br>请启动 Windows Collector 或 Android 行迹采集器。</div>`;
     return;
   }
 
@@ -54,6 +65,7 @@ function renderTimeline(segments) {
         <div class="timeline-card">
           <div class="timeline-title">
             <span class="category-badge">${escapeHtml(segment.category)}</span>
+            <span class="platform-badge">${platformLabel(segment.platform)}</span>
             <strong>${escapeHtml(segment.behavior)}</strong>
           </div>
           <p class="timeline-description">${escapeHtml(segment.description)}</p>
@@ -85,6 +97,18 @@ function renderTimeline(segments) {
     });
     select.dataset.previous = select.value;
   });
+}
+
+async function loadDevices() {
+  const response = await fetch("/api/v1/devices");
+  if (!response.ok) throw new Error("设备列表加载失败");
+  const { devices } = await response.json();
+  const select = document.getElementById("deviceFilter");
+  const current = selectedDevice;
+  select.innerHTML = `<option value="">全部设备（时长可能重叠）</option>` + devices.map((device) =>
+    `<option value="${escapeHtml(device.device_id)}">${platformLabel(device.platform)} · ${escapeHtml(device.device_id)}</option>`
+  ).join("");
+  if ([...select.options].some((option) => option.value === current)) select.value = current;
 }
 
 function renderChart(items) {
@@ -132,7 +156,10 @@ function renderChart(items) {
 function renderTimeStack(segments) {
   if (!window.echarts) return;
   const chart = document.getElementById("timeStackChart");
-  timeStackChartInstance ||= echarts.init(chart);
+  if (!timeStackChartInstance) {
+    if (getComputedStyle(chart).display === "none") return;
+    timeStackChartInstance = echarts.init(chart);
+  }
   const rows = ["00:00—08:00", "08:00—16:00", "16:00—24:00"];
   const segmentParts = [];
   segments.forEach((segment) => {
@@ -214,7 +241,10 @@ function setDistributionView(view) {
     button.classList.toggle("is-active", active);
     button.setAttribute("aria-selected", String(active));
   });
-  if (showStack) timeStackChartInstance?.resize();
+  if (showStack) {
+    renderTimeStack(window.timelineSegments || []);
+    requestAnimationFrame(() => timeStackChartInstance?.resize());
+  }
 }
 
 async function loadDashboard(showSuccess = false) {
@@ -223,19 +253,23 @@ async function loadDashboard(showSuccess = false) {
   button.textContent = "刷新中…";
   try {
     const [timelineResponse, summaryResponse] = await Promise.all([
-      fetch("/api/v1/timeline/today"),
-      fetch("/api/v1/summary/today"),
+      fetch(withDevice("/api/v1/timeline/today")),
+      fetch(withDevice("/api/v1/summary/today")),
     ]);
     if (!timelineResponse.ok || !summaryResponse.ok) throw new Error("后端暂时不可用");
     const timeline = await timelineResponse.json();
     const summary = await summaryResponse.json();
     const segments = timeline.segments;
+    window.timelineSegments = segments;
 
     renderTimeline(segments);
     renderChart(summary.categories);
-    renderTimeStack(segments);
+    if (document.querySelector(".view-switch-button.is-active")?.dataset.view === "stack") {
+      renderTimeStack(segments);
+    }
     document.getElementById("segmentCount").textContent = segments.length;
     document.getElementById("trackedTime").textContent = formatDuration(summary.total_seconds);
+    document.getElementById("trackedLabel").textContent = selectedDevice ? "该设备已记录" : "已记录设备时长";
     const focus = summary.categories.filter((item) => item.category === "学习" || item.category === "工作").reduce((sum, item) => sum + item.seconds, 0);
     document.getElementById("focusRate").textContent = summary.total_seconds ? `${Math.round(focus * 100 / summary.total_seconds)}%` : "0%";
 
@@ -243,7 +277,7 @@ async function loadDashboard(showSuccess = false) {
     if (current) {
       const isFresh = Date.now() - new Date(current.end_time).getTime() < 120_000;
       document.getElementById("currentTitle").textContent = `${isFresh ? "正在" : "最近"}${current.category}：${current.description}`;
-      document.getElementById("currentMeta").textContent = `${current.behavior} · ${isFresh ? "从" : "记录于"} ${formatClock(current.start_time_local)} · ${current.process}`;
+      document.getElementById("currentMeta").textContent = `${platformLabel(current.platform)} · ${current.behavior} · ${isFresh ? "从" : "记录于"} ${formatClock(current.start_time_local)} · ${current.process}`;
     }
     const livePill = document.querySelector(".live-pill");
     livePill.classList.remove("offline");
@@ -261,10 +295,15 @@ async function loadDashboard(showSuccess = false) {
 
 document.getElementById("todayLabel").textContent = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "long" }).format(new Date());
 document.getElementById("refreshButton").addEventListener("click", () => loadDashboard(true));
+document.getElementById("deviceFilter").addEventListener("change", (event) => {
+  selectedDevice = event.target.value;
+  loadDashboard(false);
+});
 window.addEventListener("resize", () => chartInstance?.resize());
 window.addEventListener("resize", () => timeStackChartInstance?.resize());
-document.querySelectorAll(".view-switch-button").forEach((button) => {
-  button.addEventListener("click", () => setDistributionView(button.dataset.view));
+document.querySelector(".view-switch")?.addEventListener("click", (event) => {
+  const button = event.target.closest(".view-switch-button");
+  if (button) setDistributionView(button.dataset.view);
 });
-loadDashboard();
+loadDevices().catch(() => {}).finally(() => loadDashboard());
 window.setInterval(() => loadDashboard(false), 30_000);

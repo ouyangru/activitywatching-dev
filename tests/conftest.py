@@ -25,9 +25,12 @@ def event(
     title: str = "mini-nccl - Visual Studio Code",
     duration_ms: int = 10_000,
     idle_ms: int = 0,
+    platform: str = "windows",
+    device_id: str = "test-pc",
 ) -> dict:
     return {
-        "device_id": "test-pc",
+        "platform": platform,
+        "device_id": device_id,
         "sequence": sequence,
         "start_time": start_time,
         "duration_ms": duration_ms,
@@ -42,4 +45,3 @@ def event(
             "clipboard_events": [],
         },
     }
-

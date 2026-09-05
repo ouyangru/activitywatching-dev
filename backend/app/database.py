@@ -18,6 +18,7 @@ PRAGMA foreign_keys=ON;
 CREATE TABLE IF NOT EXISTS feature_windows (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     device_id TEXT NOT NULL,
+    platform TEXT NOT NULL DEFAULT 'windows',
     sequence INTEGER NOT NULL,
     start_time TEXT NOT NULL,
     duration_ms INTEGER NOT NULL,
@@ -40,6 +41,7 @@ ON feature_windows(start_time);
 CREATE TABLE IF NOT EXISTS activity_segments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     device_id TEXT NOT NULL,
+    platform TEXT NOT NULL DEFAULT 'windows',
     start_time TEXT NOT NULL,
     end_time TEXT NOT NULL,
     category TEXT NOT NULL,
@@ -84,6 +86,19 @@ class Database:
         self._write_lock = threading.RLock()
         with self.connect() as connection:
             connection.executescript(SCHEMA)
+            self._ensure_column(connection, "feature_windows", "platform", "TEXT NOT NULL DEFAULT 'windows'")
+            self._ensure_column(connection, "activity_segments", "platform", "TEXT NOT NULL DEFAULT 'windows'")
+
+    @staticmethod
+    def _ensure_column(
+        connection: sqlite3.Connection,
+        table: str,
+        column: str,
+        declaration: str,
+    ) -> None:
+        existing = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+        if column not in existing:
+            connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -104,14 +119,15 @@ class Database:
                 cursor = connection.execute(
                     """
                     INSERT OR IGNORE INTO feature_windows (
-                        device_id, sequence, start_time, duration_ms, process, window_title,
+                        device_id, platform, sequence, start_time, duration_ms, process, window_title,
                         key_count, mouse_click_count, scroll_count, idle_ms,
                         clipboard_copy_count, clipboard_paste_count, clipboard_events_json,
                         received_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         event.device_id,
+                        event.platform,
                         event.sequence,
                         utc_iso(event.start_time),
                         event.duration_ms,
@@ -165,13 +181,14 @@ class Database:
                 connection.execute(
                     """
                     INSERT INTO activity_segments (
-                        device_id, start_time, end_time, category, base_category, behavior,
+                        device_id, platform, start_time, end_time, category, base_category, behavior,
                         description, process, window_title, window_count, key_count,
                         mouse_click_count, scroll_count, interruptions_json, manual_override, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         device_id,
+                        segment["platform"],
                         segment["start_time"],
                         segment["end_time"],
                         category,
@@ -245,3 +262,14 @@ class Database:
         with self.connect() as connection:
             return int(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
 
+    def list_devices(self) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT device_id, platform, MAX(start_time) AS last_seen, COUNT(*) AS window_count
+                FROM feature_windows
+                GROUP BY device_id, platform
+                ORDER BY last_seen DESC
+                """
+            )
+            return [dict(row) for row in rows]

@@ -40,8 +40,8 @@ def create_app(
 
     application = FastAPI(
         title="行迹 Activity Timeline",
-        version="0.1.0",
-        description="Privacy-first Windows activity timeline demo",
+        version="0.2.0",
+        description="Privacy-first Windows and Android activity timeline",
     )
     application.state.database = database
     application.state.analyzer = analyzer
@@ -117,6 +117,10 @@ def create_app(
             for category in CATEGORIES
         ]
         return {"total_seconds": total, "categories": items}
+
+    @application.get("/api/v1/devices")
+    def devices(_: None = Depends(require_auth)) -> dict[str, Any]:
+        return {"devices": database.list_devices()}
 
     @application.patch("/api/v1/segments/{segment_id}")
     def patch_segment(segment_id: int, correction: SegmentCorrection, _: None = Depends(require_auth)) -> dict[str, Any]:

@@ -67,3 +67,54 @@ def test_api_token_protects_data_endpoints(tmp_path: Path):
         assert auth_client.get("/api/v1/timeline/today", headers={"Authorization": "Bearer test-token"}).status_code == 200
         assert auth_client.get("/api/v1/health").status_code == 200
 
+
+def test_android_event_is_classified_and_exposed_as_device(client):
+    android = event(
+        1,
+        "2026-09-05T00:20:00Z",
+        process="com.tencent.mm",
+        title="微信",
+        duration_ms=120_000,
+        platform="android",
+        device_id="android-phone-01",
+    )
+
+    response = client.post("/api/v1/events/batch", json={"events": [android]})
+    assert response.status_code == 200
+
+    timeline = client.get(
+        "/api/v1/timeline/today?day=2026-09-05&device_id=android-phone-01"
+    ).json()["segments"]
+    assert timeline[0]["platform"] == "android"
+    assert timeline[0]["behavior"] == "沟通"
+    assert timeline[0]["category"] == "工作"
+
+    devices = client.get("/api/v1/devices").json()["devices"]
+    assert devices == [
+        {
+            "device_id": "android-phone-01",
+            "platform": "android",
+            "last_seen": "2026-09-05T00:20:00.000Z",
+            "window_count": 1,
+        }
+    ]
+
+
+def test_android_screen_off_is_idle_even_when_shorter_than_idle_threshold(client):
+    locked = event(
+        1,
+        "2026-09-05T00:20:00Z",
+        process="__screen_off__",
+        title="手机屏幕关闭",
+        duration_ms=30_000,
+        idle_ms=30_000,
+        platform="android",
+        device_id="android-phone-01",
+    )
+    client.post("/api/v1/events/batch", json={"events": [locked]})
+
+    segment = client.get(
+        "/api/v1/timeline/today?day=2026-09-05&device_id=android-phone-01"
+    ).json()["segments"][0]
+    assert segment["category"] == "空闲"
+    assert segment["behavior"] == "手机锁屏"

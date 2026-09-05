@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0d1b1a">
   <title>行迹 · 今日行为时间线</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2310201e'/%3E%3Cpath d='M18 40V29M32 40V17M46 40V24' stroke='%2391e5b6' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/styles.css?v=20260905-1">
 </head>
 <body>
   <div class="ambient ambient-one"></div>
@@ -31,7 +31,7 @@
     </section>
 
     <section class="stats" aria-label="今日概览">
-      <article><span>已记录</span><strong id="trackedTime">0 分钟</strong></article>
+      <article><span id="trackedLabel">已记录设备时长</span><strong id="trackedTime">0 分钟</strong></article>
       <article><span>行为片段</span><strong id="segmentCount">0</strong></article>
       <article><span>专注占比</span><strong id="focusRate">0%</strong></article>
       <article><span>数据策略</span><strong class="privacy-value">仅汇总</strong></article>
@@ -44,7 +44,13 @@
             <p class="eyebrow">ACTIVITY STREAM</p>
             <h2 id="timelineTitle">今日时间线</h2>
           </div>
-          <button id="refreshButton" class="ghost-button" type="button">刷新数据</button>
+          <div class="timeline-actions">
+            <label class="device-filter-label" for="deviceFilter">设备</label>
+            <select id="deviceFilter" class="device-filter">
+              <option value="">全部设备</option>
+            </select>
+            <button id="refreshButton" class="ghost-button" type="button">刷新数据</button>
+          </div>
         </div>
         <div id="timeline" class="timeline" aria-live="polite"></div>
       </section>
@@ -70,7 +76,7 @@
           <div class="shield" aria-hidden="true">✓</div>
           <div>
             <strong>隐私保护已启用</strong>
-            <p>只保存按键次数与剪贴板类型，不保存输入内容和剪贴板原文。</p>
+            <p>电脑只保存交互次数；手机只保存应用使用时段和锁屏状态，不保存输入内容。</p>
           </div>
         </section>
       </aside>
@@ -79,6 +85,6 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js"></script>
-  <script src="/static/app.js" defer></script>
+  <script src="/static/app.js?v=20260905-1" defer></script>
 </body>
 </html>

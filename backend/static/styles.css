@@ -101,6 +101,9 @@ h1 { margin: 0; font-size: clamp(30px, 4.2vw, 52px); line-height: 1.13; letter-s
 }
 .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 27px; }
 .panel-heading h2 { margin: 0; font-size: 22px; letter-spacing: -.025em; }
+.timeline-actions { display: flex; align-items: center; gap: 9px; }
+.device-filter-label { color: var(--muted); font-size: 11px; }
+.device-filter { max-width: 210px; color: #b7c8c1; background: rgba(255,255,255,.025); border: 1px solid var(--line); border-radius: 10px; padding: 9px 30px 9px 11px; }
 .ghost-button { color: #b7c8c1; background: rgba(255,255,255,.025); border: 1px solid var(--line); border-radius: 10px; padding: 9px 13px; cursor: pointer; transition: .2s ease; }
 .ghost-button:hover { color: var(--text); border-color: rgba(145,229,182,.3); background: rgba(145,229,182,.06); }
 
@@ -120,6 +123,7 @@ h1 { margin: 0; font-size: clamp(30px, 4.2vw, 52px); line-height: 1.13; letter-s
 .timeline-card { min-width: 0; padding: 0 0 2px 5px; }
 .timeline-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 7px; }
 .category-badge { color: var(--category-color); border: 1px solid color-mix(in srgb, var(--category-color) 32%, transparent); background: color-mix(in srgb, var(--category-color) 8%, transparent); border-radius: 6px; padding: 3px 7px; font-size: 11px; }
+.platform-badge { color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 3px 7px; font-size: 10px; }
 .timeline-title strong { font-size: 15px; }
 .timeline-description { margin: 0; color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .timeline-details { display: flex; align-items: center; gap: 12px; margin-top: 10px; color: #71847d; font-size: 11px; }
@@ -127,8 +131,8 @@ h1 { margin: 0; font-size: clamp(30px, 4.2vw, 52px); line-height: 1.13; letter-s
 
 .side-column { display: grid; gap: 18px; }
 .distribution-panel { padding: 29px 28px; }
-.view-switch { display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 9px; background: rgba(255,255,255,.025); }
-.view-switch-button { color: var(--muted); background: transparent; border: 0; border-radius: 6px; padding: 6px 9px; font-size: 11px; cursor: pointer; }
+.view-switch { display: inline-flex; flex: 0 0 auto; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 9px; background: rgba(255,255,255,.025); }
+.view-switch-button { min-width: 52px; color: var(--muted); background: transparent; border: 0; border-radius: 6px; padding: 6px 9px; font-size: 11px; cursor: pointer; pointer-events: auto; }
 .view-switch-button:hover, .view-switch-button.is-active { color: var(--text); background: rgba(145,229,182,.12); }
 .time-stack-chart { display: none; height: 150px; }
 .time-stack-chart.is-visible { display: block; }
@@ -166,6 +170,10 @@ h1 { margin: 0; font-size: clamp(30px, 4.2vw, 52px); line-height: 1.13; letter-s
   .hero { min-height: 220px; margin-top: 20px; }
   .stats article { padding: 17px; }
   .timeline-panel, .distribution-panel { padding: 23px 18px; }
+  .panel-heading { align-items: flex-start; }
+  .timeline-actions { flex-wrap: wrap; justify-content: flex-end; }
+  .device-filter-label { display: none; }
+  .device-filter { max-width: 150px; }
   .timeline-panel { height: min(620px, calc(100vh - 180px)); min-height: 360px; }
   .timeline::before { left: 70px; }
   .timeline-item { grid-template-columns: 53px 17px 1fr; gap: 8px; }

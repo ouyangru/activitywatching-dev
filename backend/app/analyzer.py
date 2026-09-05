@@ -22,6 +22,7 @@ class Segment:
     description: str
     process: str
     window_title: str
+    platform: str = "windows"
     window_count: int = 1
     key_count: int = 0
     mouse_click_count: int = 0
@@ -49,6 +50,7 @@ class Segment:
             "description": self.description,
             "process": self.process,
             "window_title": self.window_title,
+            "platform": self.platform,
             "window_count": self.window_count,
             "key_count": self.key_count,
             "mouse_click_count": self.mouse_click_count,
@@ -98,7 +100,12 @@ class ActivityAnalyzer:
 
     @staticmethod
     def _same_activity(left: Segment, right: Segment) -> bool:
-        return left.category == right.category and left.behavior == right.behavior and left.process == right.process
+        return (
+            left.platform == right.platform
+            and left.category == right.category
+            and left.behavior == right.behavior
+            and left.process == right.process
+        )
 
     @staticmethod
     def _is_contiguous(left: Segment, right: Segment) -> bool:
@@ -132,16 +139,21 @@ class ActivityAnalyzer:
         end = start + timedelta(milliseconds=row["duration_ms"])
         process = row["process"] or "Unknown"
         title = row["window_title"] or ""
+        platform = row["platform"] or "windows"
 
-        if row["idle_ms"] >= self.idle_threshold_ms:
+        if process == "__screen_off__":
+            category, behavior, description = "空闲", "手机锁屏", "手机屏幕关闭"
+        elif row["idle_ms"] >= self.idle_threshold_ms:
             category, behavior, description = "空闲", "离开电脑", "暂时离开电脑"
         else:
-            category, behavior, description = "其他", "使用电脑", self._default_description(process)
+            behavior = "使用手机" if platform == "android" else "使用电脑"
+            category, description = "其他", self._default_description(process, title, platform)
             for rule in self.rules:
                 match = rule.get("match", {})
+                platform_ok = not match.get("platform") or match["platform"] == platform
                 process_ok = not match.get("process") or re.search(match["process"], process, re.IGNORECASE)
                 title_ok = not match.get("title") or re.search(match["title"], title, re.IGNORECASE)
-                if process_ok and title_ok:
+                if platform_ok and process_ok and title_ok:
                     category = rule["category"]
                     behavior = rule["behavior"]
                     description = self._description(rule, process, title)
@@ -155,13 +167,16 @@ class ActivityAnalyzer:
             description=description,
             process=process,
             window_title=title,
+            platform=platform,
             key_count=row["key_count"],
             mouse_click_count=row["mouse_click_count"],
             scroll_count=row["scroll_count"],
         )
 
     @staticmethod
-    def _default_description(process: str) -> str:
+    def _default_description(process: str, title: str = "", platform: str = "windows") -> str:
+        if platform == "android":
+            return f"使用 {title or process}"
         clean = re.sub(r"\.exe$", "", process, flags=re.IGNORECASE)
         return f"使用 {clean}"
 
@@ -185,4 +200,3 @@ def serialize_segment(row: Any, local_timezone: ZoneInfo) -> dict[str, Any]:
     result["interruptions"] = json.loads(result.pop("interruptions_json", "[]"))
     result["manual_override"] = bool(result["manual_override"])
     return result
-

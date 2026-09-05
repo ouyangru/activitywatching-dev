@@ -3,6 +3,27 @@ short_switch_seconds: 15
 
 rules:
   - match:
+      platform: "android"
+      process: "^(com\\.tencent\\.mm|com\\.ss\\.android\\.lark)$"
+    behavior: "沟通"
+    category: "工作"
+    description: "使用 {app} 沟通"
+
+  - match:
+      platform: "android"
+      process: "^(tv\\.danmaku\\.bili|com\\.bilibili\\.app\\.in|com\\.google\\.android\\.youtube|com\\.ss\\.android\\.ugc\\.aweme)$"
+    behavior: "观看视频"
+    category: "娱乐"
+    description: "使用 {app} 观看视频"
+
+  - match:
+      platform: "android"
+      process: "^(com\\.android\\.chrome|com\\.microsoft\\.emmx|org\\.mozilla\\.firefox)$"
+    behavior: "浏览网页"
+    category: "其他"
+    description: "使用 {app} 浏览网页"
+
+  - match:
       process: "^(Code|code-insiders)\\.exe$"
     behavior: "编程"
     category: "学习"

@@ -26,6 +26,7 @@ class Interaction(BaseModel):
 
 
 class FeatureWindow(BaseModel):
+    platform: Literal["windows", "android"] = "windows"
     device_id: str = Field(min_length=1, max_length=128)
     sequence: int = Field(ge=0)
     start_time: datetime
@@ -47,4 +48,3 @@ class BatchRequest(BaseModel):
 
 class SegmentCorrection(BaseModel):
     category: Literal["学习", "工作", "娱乐", "空闲", "其他"]
-
