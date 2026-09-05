@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import queue
 import re
@@ -35,6 +36,11 @@ from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 from .database import Database, utc_iso
+
+
+LOG = logging.getLogger("activitywatch.agent")
+# 输入/输出全文日志开关：默认开；设 ACTIVITYWATCH_AGENT_LOG_PAYLOADS=0 只看统计不看正文
+_PAYLOAD_LOG = os.getenv("ACTIVITYWATCH_AGENT_LOG_PAYLOADS", "1") != "0"
 
 
 TITLE_MAX_CHARS = 80
@@ -126,8 +132,11 @@ def default_llm_client_from_env() -> tuple[LLMClient | None, str]:
         try:
             with urllib.request.urlopen(request, timeout=LLM_TIMEOUT_SECONDS) as response:
                 body = json.loads(response.read().decode("utf-8"))
-            return body["choices"][0]["message"]["content"]
-        except (urllib.error.URLError, TimeoutError, KeyError, IndexError, ValueError, json.JSONDecodeError):
+            content = body["choices"][0]["message"]["content"]
+            LOG.info("[agent.llm] %s 响应 %d 字符", model, len(content or ""))
+            return content
+        except (urllib.error.URLError, TimeoutError, KeyError, IndexError, ValueError, json.JSONDecodeError) as error:
+            LOG.warning("[agent.llm] %s 请求失败: %r", model, error)
             return None
 
     return call, model
@@ -196,10 +205,12 @@ class AgentService:
     def _worker(self) -> None:
         while True:
             day = self._queue.get()
+            LOG.info("[agent.worker] 开始增强 %s", day)
             try:
-                self.enrich_day(day)
-            except Exception:  # 后台线程绝不向上抛
-                pass
+                stats = self.enrich_day(day)
+                LOG.info("[agent.worker] %s 增强完成：%s", day, stats)
+            except Exception:  # 后台线程绝不向上抛，但必须留下日志
+                LOG.exception("[agent.worker] %s 增强失败（回退规则底账）", day)
             finally:
                 with self._pending_lock:
                     self._pending.discard(day)
@@ -292,13 +303,20 @@ class AgentService:
         if touched:
             self.database.touch_memories(touched)
         user_prompt = json.dumps(chunk, ensure_ascii=False)
+        if _PAYLOAD_LOG:
+            LOG.info("[agent.classify] 输入 %d 条待判定片段:\n%s", len(chunk), user_prompt)
         raw = self.llm(CLASSIFY_SYSTEM_PROMPT, user_prompt) if self.llm else None
         if not raw:
+            LOG.warning("[agent.classify] 模型调用失败或返回空（%s 条丢弃，回退规则值）", len(chunk))
             return 0
+        if _PAYLOAD_LOG:
+            LOG.info("[agent.classify] 模型原始输出:\n%s", raw)
         try:
             parsed = _extract_json_array(raw)
         except ValueError:
+            LOG.warning("[agent.classify] 输出不是合法 JSON 数组，丢弃本批 %d 条:\n%s", len(chunk), raw)
             return 0
+        LOG.info("[agent.classify] 解析成功 %d/%d 条，开始落库", len(parsed), len(chunk))
         created = 0
         by_digest = {item["digest"]: item for item in chunk}
         for judgment in parsed:

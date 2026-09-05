@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -15,6 +16,8 @@ from zoneinfo import ZoneInfo
 
 from .agent import SUMMARY_SYSTEM_PROMPT, AgentService, LLMClient
 from .database import Database, utc_iso
+
+LOG = logging.getLogger("activitywatch.summarizer")
 
 
 class DailySummarizer:
@@ -72,8 +75,8 @@ class DailySummarizer:
         def target() -> None:
             try:
                 self.generate(day, version, payload_builder())
-            except Exception:  # 后台线程绝不向上抛
-                pass
+            except Exception:  # 后台线程绝不向上抛，但必须留下日志
+                LOG.exception("[summary.generate] %s 后台生成失败", day)
             finally:
                 with self._lock:
                     self._generating.discard(day)
@@ -91,12 +94,16 @@ class DailySummarizer:
             memory_context=self._memory_context(),
             week_context=self._week_context(day),
         )
+        LOG.info("[summary.generate] %s 日报输入 prompt（version=%s）:\n%s", day, version, prompt)
         raw = self.llm(SUMMARY_SYSTEM_PROMPT, prompt)
         if not raw:
+            LOG.warning("[summary.generate] %s 模型调用失败或返回空，日报回退纯统计", day)
             return None
         narrative = raw.strip()
         if not narrative:
+            LOG.warning("[summary.generate] %s 模型输出为空白", day)
             return None
+        LOG.info("[summary.generate] %s 日报输出:\n%s", day, narrative)
         self.database.save_daily_summary(day, version, narrative, self.model_name)
         return narrative
 

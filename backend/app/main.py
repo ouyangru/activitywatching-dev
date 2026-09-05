@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import secrets
 from collections import defaultdict
@@ -144,6 +145,11 @@ def create_app(
     agent_llm=None,
     summarizer_llm=None,
 ) -> FastAPI:
+    # 让 activitywatch.* 的 INFO 日志（agent/summarizer 输入输出）落到 stderr/journalctl
+    logging.basicConfig(
+        level=os.getenv("ACTIVITYWATCH_LOG_LEVEL", "INFO").upper(),
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
     production = os.getenv("ACTIVITYWATCH_ENV", "development") == "production"
     configured_token = api_token if api_token is not None else os.getenv("ACTIVITYWATCH_API_TOKEN", "")
     if production and (len(configured_token) < 32 or configured_token.startswith("replace-with")):

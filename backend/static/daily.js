@@ -7,9 +7,15 @@ const CATEGORY_COLORS = {
   "无设备记录": "#4b5563",
 };
 const FALLBACK_COLORS = ["#6fe0a3", "#6ba7ff", "#f3b562", "#e07a72", "#b88cff", "#7fd4d4", "#d98fc0"];
+// 用本地时区生成 YYYY-MM-DD；toISOString() 是 UTC，凌晨时段会错到昨天
+function localDateKey(date = new Date()) {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
 let dailyChart = null;
 let currentDimension = "category";
-let currentDay = new Date().toISOString().slice(0, 10);
+let currentDay = localDateKey();
 let lastReport = null;
 
 function formatClock(iso) {
@@ -51,7 +57,7 @@ function showToast(message) {
 function shiftDay(day, delta) {
   const date = new Date(`${day}T12:00:00`);
   date.setDate(date.getDate() + delta);
-  return date.toISOString().slice(0, 10);
+  return localDateKey(date);
 }
 
 function renderHeadline(report) {
@@ -247,7 +253,7 @@ async function loadReport() {
 
 document.getElementById("prevDay").addEventListener("click", () => { currentDay = shiftDay(currentDay, -1); loadReport(); });
 document.getElementById("nextDay").addEventListener("click", () => { currentDay = shiftDay(currentDay, 1); loadReport(); });
-document.getElementById("todayButton").addEventListener("click", () => { currentDay = new Date().toISOString().slice(0, 10); loadReport(); });
+document.getElementById("todayButton").addEventListener("click", () => { currentDay = localDateKey(); loadReport(); });
 document.getElementById("dayInput").addEventListener("change", (event) => {
   if (event.target.value) { currentDay = event.target.value; loadReport(); }
 });
