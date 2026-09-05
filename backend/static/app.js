@@ -175,7 +175,11 @@ function renderTimeStack(segments) {
     if (getComputedStyle(chart).display === "none") return;
     timeStackChartInstance = echarts.init(chart);
   }
-  const rows = ["00:00—08:00", "08:00—16:00", "16:00—24:00"];
+  const rows = [
+    "00:00—08:00 电脑", "00:00—08:00 手机",
+    "08:00—16:00 电脑", "08:00—16:00 手机",
+    "16:00—24:00 电脑", "16:00—24:00 手机",
+  ];
   const segmentParts = [];
   segments.forEach((segment) => {
     const startDate = new Date(segment.start_time);
@@ -187,10 +191,12 @@ function renderTimeStack(segments) {
       const current = new Date(cursor);
       const dayStart = new Date(current.getFullYear(), current.getMonth(), current.getDate()).getTime();
       const elapsedHours = (cursor - dayStart) / 3600000;
-      const row = Math.min(2, Math.floor(elapsedHours / 8));
-      const rowEnd = dayStart + (row + 1) * 8 * 3600000;
+      const timeBlock = Math.min(2, Math.floor(elapsedHours / 8));
+      const deviceRow = segment.platform === "android" ? 1 : 0;
+      const row = timeBlock * 2 + deviceRow;
+      const rowEnd = dayStart + (timeBlock + 1) * 8 * 3600000;
       const partEnd = Math.min(end, rowEnd);
-      const rowStart = dayStart + row * 8 * 3600000;
+      const rowStart = dayStart + timeBlock * 8 * 3600000;
       segmentParts.push({
         category: segment.category,
         row,
@@ -227,7 +233,7 @@ function renderTimeStack(segments) {
       trigger: "item",
       formatter: (params) => {
         const segment = params.data[3];
-        return `${segment.category}<br>${segment.behavior}<br>${formatClock(segment.start_time)}—${formatClock(segment.end_time)}`;
+        return `${platformLabel(segment.platform)} · ${segment.category}<br>${segment.behavior}<br>${formatClock(segment.start_time)}—${formatClock(segment.end_time)}`;
       },
     },
     legend: { show: true, top: 0, textStyle: { color: "#91a49e", fontSize: 10 }, itemWidth: 10, itemHeight: 8 },
