@@ -16,6 +16,51 @@ scripts/seed_demo.py     生成一组可视化演示数据
 
 Agent 语义增强层（LLM 状态判定、日报总结、长期记忆）的架构、配置与开发指南见 [AGENT.md](AGENT.md)。
 
+## 部署方式一览
+
+| 场景 | 做法 | 详细文档 |
+| --- | --- | --- |
+| 本地开发体验 | WSL2 中 uvicorn 启动（见下文“五分钟启动”） | 本 README |
+| 手机局域网查看 | `.\scripts\start-mobile.ps1`，监听局域网地址 + 一次性令牌 | 本 README |
+| 阿里云生产部署（推荐） | `bash scripts/deploy-aliyun.sh` 一键发布 | [DEPLOYMENT_ALIYUN.md](DEPLOYMENT_ALIYUN.md) |
+| 固定 HTTPS 云端 | `render.yaml`，Render 持久磁盘 | [DEPLOYMENT_CLOUD.md](DEPLOYMENT_CLOUD.md) |
+
+### 阿里云一键部署
+
+代码以 GitHub `main` 分支为唯一事实源。本地提交并推送工作树干净后，执行：
+
+```bash
+bash scripts/deploy-aliyun.sh
+```
+
+脚本依次完成：推送 `main` -> 服务器 `git reset --hard origin/main` -> 安装依赖 -> 重启 `activity-timeline` 服务 -> 公网健康检查；健康检查失败会自动回滚到部署前版本。数据库与生产令牌不受部署影响。前置条件（SSH 免密登录、GitHub key）与回滚细节见 [DEPLOYMENT_ALIYUN.md](DEPLOYMENT_ALIYUN.md)。
+
+## 日志与排查
+
+### 本地（开发环境）
+
+uvicorn 直接把日志输出到启动它的终端，无需额外配置。日志级别通过环境变量调节：
+
+```bash
+ACTIVITYWATCH_LOG_LEVEL=DEBUG uvicorn backend.app.main:app --port 8765
+```
+
+- Agent / 日报模块的日志名为 `activitywatch.agent` / `activitywatch.summarizer`，INFO 级别即可看到每次 LLM 调用的 request_id 与耗时。
+- 数据库默认落在 `backend/data/activitywatch.db`，可用 `ACTIVITYWATCH_DB_PATH` 覆盖。
+
+### 生产（阿里云）
+
+服务由 systemd 管理，登录服务器后：
+
+```bash
+systemctl status activity-timeline --no-pager        # 服务是否在跑
+journalctl -u activity-timeline -n 60 --no-pager     # 最近 60 行后端日志
+journalctl -u activity-timeline -f                    # 实时跟踪日志
+journalctl -u activity-timeline --since "1 hour ago" # 按时间过滤
+```
+
+Agent 调用 LLM 的输入输出（脱敏后）同样出现在 `journalctl` 中。程序目录 `/opt/activity-timeline`，数据库 `/var/lib/activity-timeline/activitywatch.db`，生产配置 `/etc/activity-timeline.env`（含 API 令牌，仅 root 可读，不随部署更新）。
+
 ## 五分钟启动
 
 在 WSL2 中进入本目录并执行：
@@ -87,4 +132,3 @@ Android 端的构建、授权和局域网连接说明见 [android/README.md](and
   }]
 }
 ```
-# activitywatching-dev
