@@ -94,16 +94,27 @@ bool BatchUploader::parse_endpoint() {
 }
 
 std::string BatchUploader::serialize(const FeatureWindow& window) {
+    // Mirror the backend schema limits (schemas.py): process <= 260 chars,
+    // window_title <= 2048 chars, clipboard_events <= 100 entries. A single
+    // oversized field makes the server reject the whole batch with 422, which
+    // would otherwise wedge the queue forever.
+    std::wstring process = window.context.process;
+    if (process.size() > 260) process.resize(260);
+    std::wstring title = window.context.window_title;
+    if (title.size() > 2048) title.resize(2048);
+    std::size_t clipboard_count = window.interaction.clipboard_events.size();
+    if (clipboard_count > 100) clipboard_count = 100;
+
     std::ostringstream output;
     output << "{\"device_id\":\"" << escape_json(window.device_id) << "\",\"sequence\":" << window.sequence
            << ",\"start_time\":\"" << iso8601(window.start_time) << "\",\"duration_ms\":" << window.duration_ms
-           << ",\"context\":{\"process\":\"" << escape_json(window.context.process)
-           << "\",\"window_title\":\"" << escape_json(window.context.window_title) << "\"},\"interaction\":{"
+           << ",\"context\":{\"process\":\"" << escape_json(process)
+           << "\",\"window_title\":\"" << escape_json(title) << "\"},\"interaction\":{"
            << "\"key_count\":" << window.interaction.key_count << ",\"mouse_click_count\":" << window.interaction.mouse_click_count
            << ",\"scroll_count\":" << window.interaction.scroll_count << ",\"idle_ms\":" << window.interaction.idle_ms
            << ",\"clipboard_copy_count\":" << window.interaction.clipboard_copy_count
            << ",\"clipboard_paste_count\":" << window.interaction.clipboard_paste_count << ",\"clipboard_events\":[";
-    for (std::size_t index = 0; index < window.interaction.clipboard_events.size(); ++index) {
+    for (std::size_t index = 0; index < clipboard_count; ++index) {
         if (index) output << ',';
         const auto& event = window.interaction.clipboard_events[index];
         output << "{\"kind\":\"" << escape_json(event.kind) << "\",\"length_bucket\":\""
@@ -141,10 +152,24 @@ bool BatchUploader::flush() {
     if (lines.empty()) return true;
     const auto count = std::min(batch_size_, lines.size());
     std::vector<std::string> batch(lines.begin(), lines.begin() + static_cast<std::ptrdiff_t>(count));
-    if (!post_batch(batch)) return false;
-    lines.erase(lines.begin(), lines.begin() + static_cast<std::ptrdiff_t>(count));
-    queue_size_ = lines.size();
-    return write_queue(lines);
+    const int status = post_batch(batch);
+    if (status >= 200 && status < 300) {
+        lines.erase(lines.begin(), lines.begin() + static_cast<std::ptrdiff_t>(count));
+        queue_size_ = lines.size();
+        return write_queue(lines);
+    }
+    if (status >= 400 && status < 500 && status != 429 && status != 408) {
+        // The server permanently rejects this payload (e.g. 422 validation).
+        // Retrying can never succeed, and the bad head would block the whole
+        // queue behind it forever, so drop the batch and keep the rest moving.
+        diagnostics::write("flush: server rejected batch with HTTP " + std::to_string(status) +
+                           "; dropping " + std::to_string(count) + " event(s) to unblock the queue");
+        lines.erase(lines.begin(), lines.begin() + static_cast<std::ptrdiff_t>(count));
+        queue_size_ = lines.size();
+        write_queue(lines);
+        return true;
+    }
+    return false;
 }
 
 std::size_t BatchUploader::pending_count() const {
@@ -187,11 +212,12 @@ bool BatchUploader::post_heartbeat(const std::wstring& device_id) {
     body << "{\"device_id\":\"" << escape_json(device_id) << "\",\"platform\":\"windows\",\"collector_version\":\""
          << ACTIVITY_COLLECTOR_VERSION << "\"}";
     const std::wstring path = endpoint_.path_prefix + L"/api/v1/heartbeat";
-    return post_json(path, body.str());
+    const int status = post_json(path, body.str());
+    return status >= 200 && status < 300;
 }
 
-bool BatchUploader::post_batch(const std::vector<std::string>& lines) const {
-    if (endpoint_.host.empty()) return false;
+int BatchUploader::post_batch(const std::vector<std::string>& lines) const {
+    if (endpoint_.host.empty()) return kTransportFailure;
     std::ostringstream body;
     body << "{\"events\":[";
     for (std::size_t index = 0; index < lines.size(); ++index) {
@@ -236,21 +262,23 @@ ProxySelection select_proxy() {
     return selection;
 }
 
-bool BatchUploader::post_json(const std::wstring& path, const std::string& payload) const {
+int BatchUploader::post_json(const std::wstring& path, const std::string& payload) const {
     // Direct connection first: the activity backend is a plain reachable
     // server, while local proxy clients (Clash & friends) were observed
     // accepting the TCP connection but never completing the CONNECT tunnel,
     // leaving an ESTABLISHED socket that never delivers a response. Only when
     // the direct route fails do we honour the user's static proxy config,
     // which is what corporate networks require.
-    if (post_json_once(path, payload, nullptr)) return true;
+    if (const int status = post_json_once(path, payload, nullptr)) return status;
     const ProxySelection proxy = select_proxy();
-    if (proxy.use_proxy && post_json_once(path, payload, &proxy)) return true;
-    return false;
+    if (proxy.use_proxy) {
+        if (const int status = post_json_once(path, payload, &proxy)) return status;
+    }
+    return kTransportFailure;
 }
 
-bool BatchUploader::post_json_once(const std::wstring& path, const std::string& payload,
-                                    const ProxySelection* proxy) const {
+int BatchUploader::post_json_once(const std::wstring& path, const std::string& payload,
+                                  const ProxySelection* proxy) const {
     HINTERNET session = WinHttpOpen(widen("ActivityTimelineCollector/" ACTIVITY_COLLECTOR_VERSION).c_str(),
                                     proxy ? WINHTTP_ACCESS_TYPE_NAMED_PROXY : WINHTTP_ACCESS_TYPE_NO_PROXY,
                                     proxy ? proxy->server.c_str() : WINHTTP_NO_PROXY_NAME,
@@ -269,7 +297,7 @@ bool BatchUploader::post_json_once(const std::wstring& path, const std::string& 
     HINTERNET request = WinHttpOpenRequest(connection, L"POST", path.c_str(), nullptr, WINHTTP_NO_REFERER,
                                            WINHTTP_DEFAULT_ACCEPT_TYPES,
                                            endpoint_.secure ? WINHTTP_FLAG_SECURE : 0);
-    bool success = false;
+    int result = kTransportFailure;
     if (!request) {
         diagnostics::write("post_json: WinHttpOpenRequest failed gle=" + std::to_string(GetLastError()));
     } else {
@@ -288,8 +316,8 @@ bool BatchUploader::post_json_once(const std::wstring& path, const std::string& 
             DWORD size = sizeof(status);
             if (WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
                                     WINHTTP_HEADER_NAME_BY_INDEX, &status, &size, WINHTTP_NO_HEADER_INDEX)) {
-                success = status >= 200 && status < 300;
-                if (!success) {
+                result = static_cast<int>(status);
+                if (status < 200 || status >= 300) {
                     diagnostics::write("post_json: HTTP status " + std::to_string(status) + " (proxy=" +
                                        std::string(proxy ? "on" : "off") + ")");
                 }
@@ -299,5 +327,5 @@ bool BatchUploader::post_json_once(const std::wstring& path, const std::string& 
     }
     WinHttpCloseHandle(connection);
     WinHttpCloseHandle(session);
-    return success;
+    return result;
 }

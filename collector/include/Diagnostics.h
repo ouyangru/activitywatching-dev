@@ -12,5 +12,8 @@ namespace diagnostics {
 
 void initialize(std::filesystem::path log_path);
 void write(const std::string& message);
+// Truncate the log file (opened with _SH_DENYNO, so this is safe while the
+// worker thread keeps appending).
+void clear();
 
 }  // namespace diagnostics

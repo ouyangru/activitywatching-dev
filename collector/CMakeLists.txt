@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(activity_collector VERSION 0.2.2 LANGUAGES CXX)
+project(activity_collector VERSION 0.2.4 LANGUAGES CXX)
 
 if(NOT WIN32)
     message(FATAL_ERROR "activity_collector uses Win32 APIs and must be built on Windows")

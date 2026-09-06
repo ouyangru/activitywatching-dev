@@ -32,13 +32,16 @@ private:
         std::wstring path_prefix;
     };
 
+    // HTTP status code (0 = transport failure, e.g. unreachable / timeout).
+    static constexpr int kTransportFailure = 0;
+
     [[nodiscard]] bool parse_endpoint();
     [[nodiscard]] std::vector<std::string> read_queue() const;
     bool write_queue(const std::vector<std::string>& lines) const;
-    [[nodiscard]] bool post_batch(const std::vector<std::string>& lines) const;
-    [[nodiscard]] bool post_json(const std::wstring& path, const std::string& payload) const;
-    [[nodiscard]] bool post_json_once(const std::wstring& path, const std::string& payload,
-                                      const ProxySelection* proxy) const;
+    [[nodiscard]] int post_batch(const std::vector<std::string>& lines) const;
+    [[nodiscard]] int post_json(const std::wstring& path, const std::string& payload) const;
+    [[nodiscard]] int post_json_once(const std::wstring& path, const std::string& payload,
+                                     const ProxySelection* proxy) const;
 
     std::wstring server_url_;
     std::wstring api_token_;

@@ -34,6 +34,14 @@ void initialize(std::filesystem::path path) {
     std::filesystem::create_directories(log_path.parent_path(), error);
 }
 
+void clear() {
+    std::lock_guard lock(log_mutex);
+    if (log_path.empty()) return;
+    if (FILE* output = _wfsopen(log_path.c_str(), L"w", _SH_DENYNO)) {
+        std::fclose(output);
+    }
+}
+
 void write(const std::string& message) {
     std::lock_guard lock(log_mutex);
     if (log_path.empty()) return;
