@@ -211,6 +211,7 @@ async function loadDevices() {
     select.value = "";
   }
   renderDeviceStatusRow(devices);
+  renderDeviceManager(devices);
   return devices;
 }
 
@@ -218,6 +219,26 @@ function isDeviceVisible(device, now = Date.now()) {
   if (device.is_online) return true;
   const lastSeen = new Date(device.last_seen || "").getTime();
   return Number.isFinite(lastSeen) && now - lastSeen <= DEVICE_DISPLAY_TIMEOUT_MS;
+}
+
+function renderDeviceManager(devices) {
+  const container = document.getElementById("deviceManager");
+  container.innerHTML = devices.length ? `
+    <span class="device-manager-label">设备</span>
+    ${devices.map((device) => `<span class="device-manager-item">
+      ${escapeHtml(platformLabel(device.platform))} · ${escapeHtml(device.device_id)}
+      <button type="button" data-remove-device="${escapeHtml(device.device_id)}" aria-label="删除设备 ${escapeHtml(device.device_id)}">删除</button>
+    </span>`).join("")}
+    <span class="device-manager-help">删除后仅移出列表，历史数据保留；设备重新上传会自动恢复。</span>` : "";
+}
+
+async function removeDevice(deviceId) {
+  if (!window.confirm(`确定从设备列表删除“${deviceId}”吗？\n历史时间数据会保留，设备重新上传后会自动恢复。`)) return;
+  const response = await fetch(`/api/v1/devices/${encodeURIComponent(deviceId)}`, { method: "DELETE" });
+  if (!response.ok) throw new Error("删除设备失败");
+  if (selectedDevice === deviceId) selectedDevice = "";
+  showToast("设备已从列表删除");
+  await loadDashboard(false);
 }
 
 const DEVICE_ICONS = {
@@ -289,7 +310,7 @@ function renderChart(items, chartId, showPercent = false) {
   }, true);
 }
 
-function renderTimeStack(segments, chartId) {
+function renderTimeComparison(scopes, chartId) {
   if (!window.echarts) {
     document.getElementById(chartId).innerHTML = `<div class="empty">图表库离线，暂时无法显示时间轴。</div>`;
     return;
@@ -297,21 +318,22 @@ function renderTimeStack(segments, chartId) {
   const chart = document.getElementById(chartId);
   const timeStackChartInstance = echarts.init(chart);
   distributionCharts.push(timeStackChartInstance);
-  const rows = ["全天"];
-  const segmentParts = segments.flatMap((segment) => {
-    // Use server-local clock values so browser timezone does not shift the day.
-    const startText = segment.start_time_local || segment.start_time;
-    const endText = segment.end_time_local || segment.end_time;
-    const hour = (value) => Number(value.slice(11, 13)) + Number(value.slice(14, 16)) / 60 + Number(value.slice(17, 19)) / 3600;
-    const start = hour(startText);
-    const end = endText.slice(0, 10) > startText.slice(0, 10) ? 24 : hour(endText);
-    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return [];
-    return [{ category: segment.category, row: 0, start, end,
-      block: { category: segment.category, rowLabel: segment.device_id || "综合",
-        start: startText, end: endText, seconds: segment.duration_seconds ?? (end - start) * 3600,
-        behaviors: [segment.behavior || segment.category], count: 1 } }];
-  });
-  const seriesData = [...new Set([...CATEGORIES, ...segments.map((segment) => segment.category)])].map((category) => ({
+  const rows = scopes.map((scope) => scope.label);
+  const segmentParts = scopes.flatMap((scope, row) => scope.timeline.segments.flatMap((segment) => {
+      // Use server-local clock values so browser timezone does not shift the day.
+      const startText = segment.start_time_local || segment.start_time;
+      const endText = segment.end_time_local || segment.end_time;
+      const hour = (value) => Number(value.slice(11, 13)) + Number(value.slice(14, 16)) / 60 + Number(value.slice(17, 19)) / 3600;
+      const start = hour(startText);
+      const end = endText.slice(0, 10) > startText.slice(0, 10) ? 24 : hour(endText);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return [];
+      return [{ category: segment.category, row, start, end,
+        block: { category: segment.category, rowLabel: scope.label,
+          start: startText, end: endText, seconds: segment.duration_seconds ?? (end - start) * 3600,
+          behaviors: [segment.behavior || segment.category], count: 1 } }];
+    }));
+  const categories = [...new Set(segmentParts.map((part) => part.category))];
+  const seriesData = categories.map((category) => ({
     name: category,
     type: "custom",
     coordinateSystem: "cartesian2d",
@@ -332,7 +354,7 @@ function renderTimeStack(segments, chartId) {
   }));
   timeStackChartInstance.setOption({
     animation: false,
-    grid: { left: 72, right: 10, top: 30, bottom: 22 },
+    grid: { left: 175, right: 18, top: 12, bottom: 34 },
     tooltip: {
       trigger: "item",
       formatter: (params) => {
@@ -344,7 +366,6 @@ function renderTimeStack(segments, chartId) {
         return `${escapeHtml(block.rowLabel)} · ${escapeHtml(block.category)}<br>${escapeHtml(behaviors)}<br>${formatClock(block.start)}—${formatClock(block.end)} · ${formatDuration(block.seconds)}${records}`;
       },
     },
-    legend: { show: true, top: 0, textStyle: { color: "#91a49e", fontSize: 10 }, itemWidth: 10, itemHeight: 8 },
     xAxis: {
       type: "value",
       min: 0,
@@ -354,7 +375,7 @@ function renderTimeStack(segments, chartId) {
       axisLine: { lineStyle: { color: "rgba(202,230,218,.12)" } },
       splitLine: { lineStyle: { color: "rgba(202,230,218,.07)" } },
     },
-    yAxis: { type: "category", inverse: true, data: rows, axisLabel: { color: "#91a49e", fontSize: 10 }, axisLine: { show: false }, axisTick: { show: false }, splitLine: { show: false } },
+    yAxis: { type: "category", inverse: true, data: rows, axisLabel: { color: "#c9d5d0", fontSize: 11, width: 158, overflow: "truncate" }, axisLine: { show: false }, axisTick: { show: false }, splitLine: { show: false } },
     series: seriesData,
   }, true);
 }
@@ -379,6 +400,11 @@ function renderDistribution(scopes) {
       <div id="${kind}-${index}" class="${chartClass}" role="img" aria-label="${escapeHtml(scope.label)}${ariaLabel}"></div>
     </article>`).join("");
   const scopeStyle = `--scope-count:${scopes.length}`;
+  const activeCategories = [...new Set(scopes.flatMap((scope) => scope.category.categories
+    .filter((item) => item.seconds > 0)
+    .map((item) => item.category)))];
+  document.getElementById("distributionTags").innerHTML = activeCategories.map((category) => `
+    <span><i style="background:${CATEGORY_COLORS[category] || "#b88cff"}"></i>${escapeHtml(category)}</span>`).join("");
   document.getElementById("distributionScopes").innerHTML = `
     <section class="distribution-band" aria-labelledby="categoryDistributionTitle">
       <div class="distribution-band-heading"><h3 id="categoryDistributionTitle">分类构成</h3><p>看今天具体做了哪些活动</p></div>
@@ -386,7 +412,7 @@ function renderDistribution(scopes) {
     </section>
     <section class="distribution-band" aria-labelledby="timelineDistributionTitle">
       <div class="distribution-band-heading"><h3 id="timelineDistributionTitle">全天时间轴</h3><p>所有视图均为一条 00:00—24:00 时间轴</p></div>
-      <div class="distribution-scope-grid" style="${scopeStyle}">${scopeCards("time", "distribution-time", "全天时间轴")}</div>
+      <div id="time-comparison" class="distribution-time-comparison" role="img" aria-label="综合与各设备全天时间轴"></div>
     </section>
     <section class="distribution-band" aria-labelledby="purposeDistributionTitle">
       <div class="distribution-band-heading"><h3 id="purposeDistributionTitle">目的占比</h3><p>看时间投入方向；睡眠、运动、用餐等归入生活事务</p></div>
@@ -395,8 +421,9 @@ function renderDistribution(scopes) {
   scopes.forEach((scope, index) => {
     renderChart(scope.category.categories, `category-${index}`);
     renderChart(scope.purpose.categories, `purpose-${index}`, true);
-    renderTimeStack(scope.timeline.segments, `time-${index}`);
   });
+  document.getElementById("time-comparison").style.height = `${Math.max(190, scopes.length * 58 + 70)}px`;
+  renderTimeComparison(scopes, "time-comparison");
 }
 
 async function loadDashboard(showSuccess = false) {
@@ -477,6 +504,11 @@ document.querySelectorAll("[data-timeline-view]").forEach((button) => {
   });
 });
 window.addEventListener("resize", () => distributionCharts.forEach((chart) => chart.resize()));
+document.getElementById("deviceManager").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-remove-device]");
+  if (!button) return;
+  removeDevice(button.dataset.removeDevice).catch((error) => showToast(error.message || "删除设备失败"));
+});
 
 loadDashboard();
 window.setInterval(() => loadDashboard(false), 30_000);

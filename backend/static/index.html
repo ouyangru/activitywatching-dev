@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0d1b1a">
   <title>行迹 · 今日行为时间线</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2310201e'/%3E%3Cpath d='M18 40V29M32 40V17M46 40V24' stroke='%2391e5b6' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/static/styles.css?v=20260907-1">
+  <link rel="stylesheet" href="/static/styles.css?v=20260907-2">
 </head>
 <body>
   <div class="ambient ambient-one"></div>
@@ -88,7 +88,9 @@
             <h2 id="distributionTitle">时间分布</h2>
           </div>
         </div>
-        <p class="distribution-note">每一区域都横向并列所有设备综合与各台活跃设备。超过 48 小时没有活动的设备会自动隐藏。</p>
+        <p class="distribution-note">扇形图横向比较综合与各台活跃设备；时间轴由上到下依次比较综合与各台设备。超过 48 小时未上报的设备自动隐藏。</p>
+        <div id="deviceManager" class="device-manager" aria-label="设备管理"></div>
+        <div id="distributionTags" class="distribution-tags" aria-label="活动颜色说明"></div>
         <div id="distributionScopes"></div>
       </section>
     </div>
@@ -104,6 +106,6 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js"></script>
-  <script src="/static/app.js?v=20260907-1" defer></script>
+  <script src="/static/app.js?v=20260907-2" defer></script>
 </body>
 </html>

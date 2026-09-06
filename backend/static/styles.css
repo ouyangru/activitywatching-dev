@@ -255,6 +255,15 @@ h1 { margin: 0; font-size: clamp(30px, 4.2vw, 52px); line-height: 1.13; letter-s
 .content-grid.trio { grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr); }
 .content-grid.trio .distribution-panel { grid-column: 1 / -1; }
 .distribution-note { color: var(--muted); font-size: 12px; line-height: 1.8; margin: 0 0 20px; }
+.device-manager { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: -4px 0 16px; }
+.device-manager-label { color: #71847d; font-size: 11px; }
+.device-manager-item { display: inline-flex; align-items: center; gap: 7px; padding: 5px 6px 5px 10px; border: 1px solid var(--line); border-radius: 99px; color: #a8bbb5; font-size: 11px; }
+.device-manager-item button { color: #d49a91; background: rgba(224,122,114,.08); border: 0; border-radius: 99px; padding: 3px 7px; font-size: 10px; cursor: pointer; }
+.device-manager-item button:hover { color: #ffd2cb; background: rgba(224,122,114,.18); }
+.device-manager-help { color: #60736c; font-size: 10px; }
+.distribution-tags { display: flex; flex-wrap: wrap; gap: 8px 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.014); }
+.distribution-tags span { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
+.distribution-tags i { width: 9px; height: 9px; border-radius: 3px; }
 .distribution-band { border-top: 1px solid var(--line); padding: 22px 0 26px; min-width: 0; }
 .distribution-band:last-child { padding-bottom: 4px; }
 .distribution-band-heading { display: flex; align-items: baseline; gap: 14px; margin-bottom: 14px; }
@@ -264,6 +273,6 @@ h1 { margin: 0; font-size: clamp(30px, 4.2vw, 52px); line-height: 1.13; letter-s
 .distribution-scope-card { min-width: 0; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,.018); padding: 14px 10px 8px; }
 .distribution-scope-card h4 { height: 34px; margin: 0; color: #c9d5d0; font-size: 12px; line-height: 1.45; text-align: center; overflow-wrap: anywhere; }
 .content-grid.trio .distribution-pie { height: 230px; min-height: 230px; max-height: none; }
-.distribution-time { height: 145px; min-width: 0; }
+.distribution-time-comparison { width: 100%; min-height: 190px; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,.018); }
 @media (max-width: 850px) { .content-grid.trio { grid-template-columns: 1fr; } }
 @media (max-width: 560px) { .distribution-band-heading { display: block; } .distribution-band-heading p { margin-top: 6px; } }

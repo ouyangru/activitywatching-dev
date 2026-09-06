@@ -158,6 +158,11 @@ CREATE TABLE IF NOT EXISTS offline_annotations (
     note TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS hidden_devices (
+    device_id TEXT PRIMARY KEY,
+    hidden_at TEXT NOT NULL
+);
 """
 
 
@@ -206,6 +211,10 @@ class Database:
         accepted = 0
         now = utc_iso(datetime.now(timezone.utc))
         with self._write_lock, self.connect() as connection:
+            connection.executemany(
+                "DELETE FROM hidden_devices WHERE device_id = ?",
+                [(device_id,) for device_id in {event.device_id for event in events}],
+            )
             for event in events:
                 interaction = event.interaction
                 cursor = connection.execute(
@@ -418,6 +427,7 @@ class Database:
     def upsert_heartbeat(self, device_id: str, platform: str, collector_version: str) -> str:
         now = utc_iso(datetime.now(timezone.utc))
         with self._write_lock, self.connect() as connection:
+            connection.execute("DELETE FROM hidden_devices WHERE device_id = ?", (device_id,))
             connection.execute(
                 """
                 INSERT INTO collector_heartbeats (device_id, platform, collector_version, last_heartbeat_at)
@@ -436,10 +446,13 @@ class Database:
         with self.connect() as connection:
             rows = connection.execute(
                 """
-                SELECT f.device_id, f.platform, MAX(f.start_time) AS last_seen, COUNT(*) AS window_count,
+                SELECT f.device_id, f.platform, MAX(f.start_time) AS last_seen,
+                       MAX(f.received_at) AS last_received_at, COUNT(*) AS window_count,
                        h.collector_version, h.last_heartbeat_at
                 FROM feature_windows f
                 LEFT JOIN collector_heartbeats h ON h.device_id = f.device_id
+                LEFT JOIN hidden_devices d ON d.device_id = f.device_id
+                WHERE d.device_id IS NULL
                 GROUP BY f.device_id, f.platform, h.collector_version, h.last_heartbeat_at
                 ORDER BY last_seen DESC
                 """
@@ -447,14 +460,36 @@ class Database:
             devices = []
             for row in rows:
                 record = dict(row)
-                reference = record.pop("last_heartbeat_at")
-                if reference:
-                    heartbeat_at = datetime.fromisoformat(reference.replace("Z", "+00:00"))
+                heartbeat_reference = record.pop("last_heartbeat_at")
+                received_reference = record.pop("last_received_at")
+                if heartbeat_reference:
+                    heartbeat_at = datetime.fromisoformat(heartbeat_reference.replace("Z", "+00:00"))
                     record["is_online"] = (now - heartbeat_at).total_seconds() <= 120
                 else:
                     record["is_online"] = False
+                activity_reference = heartbeat_reference or received_reference or record["last_seen"]
+                activity_at = datetime.fromisoformat(activity_reference.replace("Z", "+00:00"))
+                if not record["is_online"] and (now - activity_at).total_seconds() > 48 * 3600:
+                    continue
                 devices.append(record)
             return devices
+
+    def hide_device(self, device_id: str) -> bool:
+        """Remove a device from listings without deleting its historical activity."""
+        now = utc_iso(datetime.now(timezone.utc))
+        with self._write_lock, self.connect() as connection:
+            exists = connection.execute(
+                "SELECT 1 FROM feature_windows WHERE device_id = ? LIMIT 1",
+                (device_id,),
+            ).fetchone()
+            if exists is None:
+                return False
+            connection.execute(
+                "INSERT INTO hidden_devices(device_id, hidden_at) VALUES (?, ?) "
+                "ON CONFLICT(device_id) DO UPDATE SET hidden_at = excluded.hidden_at",
+                (device_id, now),
+            )
+            return True
 
     def latest_segment(self) -> sqlite3.Row | None:
         """Return the activity segment that ended most recently."""

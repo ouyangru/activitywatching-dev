@@ -313,6 +313,34 @@ def test_heartbeat_reports_and_devices_show_online(client):
     assert devices[0]["collector_version"] == ""
 
 
+def test_devices_hide_after_48_hours_without_reports(client):
+    client.post("/api/v1/events/batch", json={"events": [event(1, "2026-09-05T00:20:00Z")]})
+    stale_at = (datetime.now(timezone.utc) - timedelta(hours=49)).isoformat()
+    database = client.app.state.database
+    with database.connect() as connection:
+        connection.execute("UPDATE feature_windows SET received_at = ?", (stale_at,))
+
+    assert client.get("/api/v1/devices").json()["devices"] == []
+
+
+def test_delete_device_hides_listing_but_preserves_history_and_new_report_restores_it(client):
+    client.post("/api/v1/events/batch", json={"events": [event(1, "2026-09-05T00:20:00Z")]})
+
+    removed = client.delete("/api/v1/devices/test-pc")
+    assert removed.status_code == 200
+    assert removed.json() == {"device_id": "test-pc", "hidden": True, "history_deleted": False}
+    assert client.get("/api/v1/devices").json()["devices"] == []
+    timeline = client.get("/api/v1/timeline/today?day=2026-09-05&device_id=test-pc").json()["segments"]
+    assert any(item["id"] is not None for item in timeline)
+
+    client.post("/api/v1/heartbeat", json={"device_id": "test-pc", "platform": "windows"})
+    assert client.get("/api/v1/devices").json()["devices"][0]["device_id"] == "test-pc"
+
+
+def test_delete_unknown_device_returns_not_found(client):
+    assert client.delete("/api/v1/devices/missing").status_code == 404
+
+
 def test_heartbeat_requires_auth(tmp_path: Path):
     app = create_app(
         db_path=tmp_path / "hb-auth.db",

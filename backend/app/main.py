@@ -417,6 +417,12 @@ def create_app(
     def devices(_: None = Depends(require_auth)) -> dict[str, Any]:
         return {"devices": database.list_devices()}
 
+    @application.delete("/api/v1/devices/{device_id}")
+    def hide_device(device_id: str, _: None = Depends(require_auth)) -> dict[str, Any]:
+        if not database.hide_device(device_id):
+            raise HTTPException(status_code=404, detail="device not found")
+        return {"device_id": device_id, "hidden": True, "history_deleted": False}
+
     @application.get("/api/v1/status/current")
     def current_status(response: Response, _: None = Depends(require_auth)) -> dict[str, Any]:
         """Return the latest real activity segment and whether it is still live."""
