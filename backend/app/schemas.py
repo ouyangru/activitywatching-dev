@@ -47,7 +47,7 @@ class BatchRequest(BaseModel):
 
 
 class SegmentCorrection(BaseModel):
-    category: Literal["学习", "工作", "娱乐", "空闲", "其他"] | None = None
+    category: Literal["学习", "工作", "娱乐", "空闲", "其他", "睡眠", "运动", "出游", "用餐", "通勤", "休息", "家务"] | None = None
     purpose: str | None = Field(default=None, min_length=1, max_length=32)
     remember: bool = False
     memory_note: str | None = Field(default=None, max_length=280)
@@ -72,3 +72,24 @@ class AgentMemoryRequest(BaseModel):
     scope: str = Field(min_length=1, max_length=128)
     content: str = Field(min_length=1, max_length=280)
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+
+
+class OfflineActivityRequest(BaseModel):
+    start_time: datetime
+    end_time: datetime
+    category: Literal["睡眠", "运动", "出游", "用餐", "通勤", "休息", "家务"]
+    note: str = Field(default="", max_length=280)
+    remember: bool = False
+
+    @model_validator(mode="after")
+    def validate_interval(self) -> "OfflineActivityRequest":
+        from datetime import datetime, timezone
+        for value in (self.start_time, self.end_time):
+            if value.tzinfo is None or value.utcoffset() is None:
+                raise ValueError("times must include a timezone")
+        seconds = (self.end_time - self.start_time).total_seconds()
+        if not 0 < seconds <= 48 * 3600:
+            raise ValueError("interval must be positive and at most 48 hours")
+        if self.end_time > datetime.now(timezone.utc):
+            raise ValueError("cannot annotate future activity")
+        return self

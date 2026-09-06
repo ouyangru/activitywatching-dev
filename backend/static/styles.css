@@ -243,3 +243,10 @@ h1 { margin: 0; font-size: clamp(30px, 4.2vw, 52px); line-height: 1.13; letter-s
 .device-pill.offline { opacity: .55; }
 .device-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: #e08a78; flex-shrink: 0; }
 .device-pill.live .dot { background: var(--mint-strong); box-shadow: 0 0 0 3px rgba(75, 209, 139, .12); }
+.offline-panel { margin-bottom: 24px; padding: 24px; }
+.offline-panel p { color: #a8bbb5; line-height: 1.7; }
+.offline-form { display: flex; flex-wrap: wrap; gap: 16px; align-items: end; }
+.offline-form label { display: flex; flex-direction: column; gap: 8px; }
+.offline-form input, .offline-form select { color: #edf7f3; background: #142824; border: 1px solid #45625a; padding: 10px; border-radius: 8px; color-scheme: dark; }
+.offline-form .remember-option { flex-direction: row; align-items: center; max-width: 340px; }
+.offline-record { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 0; }

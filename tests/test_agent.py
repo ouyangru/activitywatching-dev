@@ -247,8 +247,8 @@ def test_daily_summary_cached_by_version(agent_client):
     assert report["narrative"]["source"] == "agent"
 
     # 日报 prompt 只包含脱敏字段：小时、分钟、分类、应用名，不含标题
-    summary_prompt = next(p for p in fake.user_prompts if "日报" in "" or True)
-    assert "mini-nccl" not in summary_prompt or True  # process 名允许出现，标题不允许
+    summary_prompt = next(p for system, p in zip(fake.system_prompts, fake.user_prompts) if "日报" in system)
+    assert "mini-nccl" not in summary_prompt
     assert "Visual Studio Code" not in summary_prompt
 
 

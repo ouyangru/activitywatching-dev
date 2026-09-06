@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 import yaml
 
 from .database import Database, utc_iso
+from .activities import OFFLINE_CATEGORIES
 
 
 @dataclass
@@ -200,7 +201,7 @@ class ActivityAnalyzer:
 
 
 def serialize_segment(row: Any, local_timezone: ZoneInfo) -> dict[str, Any]:
-    result = dict(row)
+    result = {key: value for key, value in dict(row).items() if not key.startswith('_')}
     start = datetime.fromisoformat(result["start_time"].replace("Z", "+00:00"))
     end = datetime.fromisoformat(result["end_time"].replace("Z", "+00:00"))
     result["duration_seconds"] = max(0, int((end - start).total_seconds()))
@@ -246,12 +247,13 @@ def build_insights(rows: list[Any], local_timezone: ZoneInfo) -> dict[str, Any]:
         purpose = row.get("purpose") or "其他"
         category = row["category"]
 
-        app = apps.setdefault(
-            (process, platform),
-            {"process": process, "platform": platform, "seconds": 0, "segment_count": 0, "category": category},
-        )
-        app["seconds"] += seconds
-        app["segment_count"] += 1
+        if category not in OFFLINE_CATEGORIES and platform != 'none':
+            app = apps.setdefault(
+                (process, platform),
+                {"process": process, "platform": platform, "seconds": 0, "segment_count": 0, "category": category},
+            )
+            app["seconds"] += seconds
+            app["segment_count"] += 1
         behaviors[behavior] = behaviors.get(behavior, 0) + seconds
         purposes[purpose] = purposes.get(purpose, 0) + seconds
 

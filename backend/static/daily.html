@@ -40,10 +40,26 @@
     </section>
 
     <section class="stats" aria-label="当日概览">
-      <article><span>有效记录时长</span><strong id="trackedTime">0.0 小时</strong></article>
+      <article><span>当日已过时长（含待确认）</span><strong id="trackedTime">0.0 小时</strong></article>
       <article><span>主活动片段</span><strong id="combinedCount">0</strong></article>
       <article><span>最长专注</span><strong id="longestFocus">0 分钟</strong></article>
       <article><span>行为切换</span><strong id="switchCount">0 次</strong></article>
+    </section>
+
+    <section class="panel offline-panel" aria-labelledby="offlineTitle">
+      <h2 id="offlineTitle">补充线下活动</h2>
+      <p>把空闲或无设备记录细分成实际活动。只覆盖这些时段，有设备活动的部分仍保留设备记录。跨夜活动可以选择不同的起止日期。</p>
+      <form id="offlineForm" class="offline-form">
+        <label>开始时间<input id="offlineStart" type="datetime-local" required></label>
+        <label>结束时间<input id="offlineEnd" type="datetime-local" required></label>
+        <label>活动<select id="offlineCategory"><option>睡眠</option><option>运动</option><option>出游</option><option>用餐</option><option>通勤</option><option>休息</option><option>家务</option></select></label>
+        <label>备注（可选，仅保存供查看）<input id="offlineNote" maxlength="280" placeholder="例如：晚饭后散步"></label>
+        <label class="remember-option"><input id="offlineRemember" type="checkbox">记住这个时段，同为工作日或周末时供 Agent 参考</label>
+        <button class="ghost-button" type="submit">保存活动</button>
+      </form>
+      <p id="offlineTimezone" class="ranking-empty"></p>
+      <p class="ranking-empty">习惯产生的判断会标为“推测”，人工确认优先。未提供习惯时，不会仅凭夜间无记录就认定睡眠。</p>
+      <div id="offlineRecords"></div>
     </section>
 
     <div class="content-grid">
@@ -96,14 +112,14 @@
             </div>
           </div>
           <ol id="agentMemoryList" class="ranking-list"></ol>
-          <p class="ranking-empty" id="memoryHint">这些记忆只存本机，用于让 Agent 更懂你的使用习惯。</p>
+          <p class="ranking-empty" id="memoryHint">记忆保存在后端；相关事实会发送给已配置的模型。<a href="/api/v1/agent/memory" target="_blank" rel="noopener">查看记忆详情</a></p>
         </section>
 
         <section class="privacy-card">
           <div class="shield" aria-hidden="true">✓</div>
           <div>
             <strong>隐私保护已启用</strong>
-            <p>日报完全由本地规则汇总生成，不包含键盘输入与剪贴板原文。</p>
+            <p>统计由本地规则生成，启用模型后可补充分类与日报。不发送键盘输入与剪贴板原文。</p>
           </div>
         </section>
       </aside>

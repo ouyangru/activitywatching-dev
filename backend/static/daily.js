@@ -5,6 +5,8 @@ const CATEGORY_COLORS = {
   "空闲": "#e07a72",
   "其他": "#b88cff",
   "无设备记录": "#4b5563",
+  "睡眠": "#8991dd", "运动": "#42cbb2", "出游": "#e6b760",
+  "用餐": "#df9972", "通勤": "#78adc8", "休息": "#b6a2c9", "家务": "#b0c979",
 };
 const FALLBACK_COLORS = ["#6fe0a3", "#6ba7ff", "#f3b562", "#e07a72", "#b88cff", "#7fd4d4", "#d98fc0"];
 // 用本地时区生成 YYYY-MM-DD；toISOString() 是 UTC，凌晨时段会错到昨天
@@ -94,7 +96,7 @@ function renderStats(report) {
 
 function renderMainTimeline(segments) {
   const target = document.getElementById("mainTimeline");
-  const items = segments.filter((segment) => segment.category !== "无设备记录");
+  const items = segments;
   if (!items.length) {
     target.innerHTML = `<div class="empty">该日暂无主活动记录。<br>可切换日期或启动采集器。</div>`;
     return;
@@ -117,17 +119,83 @@ function renderMainTimeline(segments) {
             <span class="platform-badge">${platformLabel(segment.main_platform)}</span>
             <strong>${escapeHtml(segment.behavior || segment.category)}</strong>
             <span class="reason-chip">${escapeHtml(segment.reason || "")}</span>
+            ${segment.classification?.inferred ? '<span class="reason-chip">习惯推测 · 待确认</span>' : ''}
+            ${segment.classification?.source === 'manual' ? '<span class="reason-chip">人工确认</span>' : ''}
           </div>
           <p class="timeline-description">${escapeHtml(segment.description || "")}</p>
           ${secondary || overlap ? `<div class="secondary-row">${secondary}${overlap}</div>` : ""}
           <div class="timeline-details">
             <span>${formatClock(segment.start_time_local)}—${formatClock(segment.end_time_local)}</span>
             <span>${formatDuration(segment.duration_seconds)}</span>
+            <button class="ghost-button" data-fill-start="${escapeHtml(segment.start_time)}" data-fill-end="${escapeHtml(segment.end_time)}" data-fill-category="${escapeHtml(segment.category)}">补充 / 修正时段</button>
+            ${segment.classification?.inferred ? `<button class="ghost-button" data-revoke="${escapeHtml(segment.classification.digest)}">撤销推测</button>` : ''}
           </div>
         </div>
       </article>`;
   }).join("");
+  target.querySelectorAll('[data-fill-start]').forEach(button => button.addEventListener('click', () => {
+    document.getElementById('offlineStart').value = localInputValue(button.dataset.fillStart);
+    document.getElementById('offlineEnd').value = localInputValue(button.dataset.fillEnd);
+    if ([...document.getElementById('offlineCategory').options].some(item => item.value === button.dataset.fillCategory)) {
+      document.getElementById('offlineCategory').value = button.dataset.fillCategory;
+    }
+    document.getElementById('offlineRemember').checked = false;
+    document.getElementById('offlineNote').value = '';
+    document.getElementById('offlineForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }));
+  target.querySelectorAll('[data-revoke]').forEach(button => button.addEventListener('click', async () => {
+    try {
+      const response = await fetch(`/api/v1/agent/evidence/${button.dataset.revoke}/revoke`, {method: 'POST'});
+      if (!response.ok) throw new Error('撤销失败');
+      await loadReport();
+    } catch (error) { showToast(error.message); }
+  }));
 }
+
+function localInputValue(value) {
+  const date = new Date(value);
+  return `${localDateKey(date)}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function renderOfflineRecords(report) {
+  document.getElementById('offlineTimezone').textContent = `填写时间使用当前浏览器时区：${Intl.DateTimeFormat().resolvedOptions().timeZone}。时段习惯按后端时区 ${report.timezone} 保存。`;
+  const form = document.getElementById('offlineForm');
+  if (form.dataset.day !== currentDay) {
+    document.getElementById('offlineStart').value = `${currentDay}T00:00`;
+    document.getElementById('offlineEnd').value = `${currentDay}T08:00`;
+    form.dataset.day = currentDay;
+  }
+  const target = document.getElementById('offlineRecords');
+  target.innerHTML = (report.offline_annotations || []).map(item => `<div class="offline-record">
+    <span>${escapeHtml(localInputValue(item.start_time).replace('T', ' '))} — ${escapeHtml(localInputValue(item.end_time).replace('T', ' '))} · ${escapeHtml(item.category)} ${escapeHtml(item.note)}</span>
+    <button class="ghost-button" data-delete-offline="${item.id}">删除记录及关联习惯</button></div>`).join('');
+  target.querySelectorAll('[data-delete-offline]').forEach(button => button.addEventListener('click', async () => {
+    try {
+      const response = await fetch(`/api/v1/offline-activities/${button.dataset.deleteOffline}`, {method: 'DELETE'});
+      if (!response.ok) throw new Error('删除失败');
+      await loadReport();
+    } catch (error) { showToast(error.message); }
+  }));
+}
+
+document.getElementById('offlineForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const button = event.target.querySelector('[type="submit"]');
+  button.disabled = true;
+  try {
+    const start = new Date(document.getElementById('offlineStart').value);
+    const end = new Date(document.getElementById('offlineEnd').value);
+    if (!(end > start) || end > new Date() || end - start > 48 * 3600000) throw new Error('请选择已发生的时间段，结束晚于开始，最长 48 小时');
+    const response = await fetch('/api/v1/offline-activities', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({
+      start_time: start.toISOString(), end_time: end.toISOString(), category: document.getElementById('offlineCategory').value,
+      note: document.getElementById('offlineNote').value, remember: document.getElementById('offlineRemember').checked,
+    }) });
+    if (!response.ok) throw new Error('保存失败，请检查时间范围');
+    showToast('活动已保存');
+    await loadReport();
+  } catch (error) { showToast(error.message || '保存失败'); }
+  finally { button.disabled = false; }
+});
 
 function renderDistribution() {
   if (!lastReport) return;
@@ -242,6 +310,7 @@ async function loadReport() {
     renderDistribution();
     renderRankings(report);
     renderMemories(report);
+    renderOfflineRecords(report);
     document.querySelector(".live-pill").classList.remove("offline");
     document.getElementById("connectionLabel").textContent = "服务已连接";
   } catch (error) {

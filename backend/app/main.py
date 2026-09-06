@@ -19,16 +19,16 @@ from .agent import AgentService
 from .analyzer import ActivityAnalyzer, build_insights, serialize_segment
 from .database import Database, utc_iso
 from .merger import combine_segments
-from .schemas import AgentMemoryRequest, BatchRequest, HeartbeatRequest, SegmentCorrection
+from .schemas import AgentMemoryRequest, BatchRequest, HeartbeatRequest, SegmentCorrection, OfflineActivityRequest
 from .summarizer import DailySummarizer
+from .activities import CATEGORIES, NO_DEVICE_CATEGORY
+from .offline import habit_patterns
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 STATIC_DIR = BACKEND_DIR / "static"
 DEFAULT_DB = BACKEND_DIR / "data" / "activitywatch.db"
 DEFAULT_RULES = BACKEND_DIR / "config" / "rules.yaml"
-CATEGORIES = ["学习", "工作", "娱乐", "空闲", "其他"]
-NO_DEVICE_CATEGORY = "无设备记录"
 SUMMARY_CATEGORIES = [*CATEGORIES, NO_DEVICE_CATEGORY]
 STATUS_FRESH_SECONDS = 120
 NO_DEVICE_MIN_SECONDS = 300
@@ -174,7 +174,7 @@ def create_app(
 
     application = FastAPI(
         title="行迹 Activity Timeline",
-        version="0.4.0",
+        version="0.4.1",
         description="Privacy-first Windows and Android activity timeline",
     )
     application.state.database = database
@@ -240,6 +240,8 @@ def create_app(
         coverage_rows = database.rows_between("feature_windows", utc_iso(start), utc_iso(end), device_id)
         return _with_no_device_periods(rows, coverage_rows, start, end)
 
+    agent.rows_provider = _day_segments_with_gaps
+
     def _build_combined(analyzer: ActivityAnalyzer, database: Database, day: str) -> list[dict[str, Any]]:
         """Derive cross-device primary segments for one day; original rows stay untouched.
 
@@ -279,11 +281,7 @@ def create_app(
         Original device segments are not modified; this is a derived timeline.
         """
         effective_day = day or datetime.now(analyzer.timezone).date().isoformat()
-        rows = database.combined_for_day(effective_day)
-        if not rows and day is None:
-            # 今天的数据可能由更早的 ingest 生成，允许惰性重建一次
-            database.replace_combined_segments(effective_day, _build_combined(analyzer, database, effective_day))
-            rows = database.combined_for_day(effective_day)
+        rows = _build_combined(analyzer, database, effective_day)
         segments = []
         for row in rows:
             item = dict(row)
@@ -292,7 +290,7 @@ def create_app(
             item["duration_seconds"] = max(0, int((end - start).total_seconds()))
             item["start_time_local"] = start.astimezone(analyzer.timezone).isoformat(timespec="seconds")
             item["end_time_local"] = end.astimezone(analyzer.timezone).isoformat(timespec="seconds")
-            item["secondary"] = json.loads(item.pop("secondary_json", "[]"))
+            item.setdefault("secondary", json.loads(item.pop("secondary_json", "[]")))
             segments.append(item)
         return {
             "date": effective_day,
@@ -313,7 +311,7 @@ def create_app(
         rows = _with_no_device_periods(rows, coverage_rows, start, end)
         rows = agent.apply_evidence(rows)
         # 按时间区间合并跨设备重叠段后再累计，避免多设备并行时重复计算
-        seconds = _merge_overlap_seconds(rows, dimension)
+        seconds = _merge_overlap_seconds(combine_segments(rows), dimension)
         total = sum(seconds.values())
         ordered_keys = list(SUMMARY_CATEGORIES)
         if dimension != "category":
@@ -356,11 +354,10 @@ def create_app(
         effective_day = day or datetime.now(analyzer.timezone).date().isoformat()
         rows = _day_segments_with_gaps(effective_day, None)
         rows = agent.apply_evidence(rows)
-        summary_seconds = _merge_overlap_seconds(rows, "category")
+        combined_rows = combine_segments(rows)
+        summary_seconds = _merge_overlap_seconds(combined_rows, "category")
         total = sum(summary_seconds.values())
 
-        database.replace_combined_segments(effective_day, _build_combined(analyzer, database, effective_day))
-        combined_rows = database.combined_for_day(effective_day)
         combined_segments = []
         for row in combined_rows:
             item = dict(row)
@@ -369,7 +366,7 @@ def create_app(
             item["duration_seconds"] = max(0, int((end - start).total_seconds()))
             item["start_time_local"] = start.astimezone(analyzer.timezone).isoformat(timespec="seconds")
             item["end_time_local"] = end.astimezone(analyzer.timezone).isoformat(timespec="seconds")
-            item["secondary"] = json.loads(item.pop("secondary_json", "[]"))
+            item.setdefault("secondary", json.loads(item.pop("secondary_json", "[]")))
             combined_segments.append(item)
 
         insights = build_insights([row for row in rows if row["category"] != NO_DEVICE_CATEGORY], analyzer.timezone)
@@ -390,17 +387,20 @@ def create_app(
             if rows
             else None
         )
+        agent.request_enrich(effective_day)
         return {
             "date": effective_day,
             "timezone": str(analyzer.timezone),
             "total_seconds": total,
             "summary": [
-                {"category": category, "seconds": summary_seconds.get(category, 0)}
+                {"category": category, "seconds": summary_seconds.get(category, 0),
+                 "percent": round(summary_seconds.get(category, 0) * 100 / total, 1) if total else 0}
                 for category in SUMMARY_CATEGORIES
             ],
             "combined_segments": combined_segments,
             "insights": insights,
             "narrative": narrative,
+            "offline_annotations": database.offline_annotations(*map(utc_iso, analyzer.local_day_bounds(effective_day))),
             "memories": [
                 {
                     "kind": row["kind"],
@@ -434,7 +434,7 @@ def create_app(
 
         end = datetime.fromisoformat(row["end_time"].replace("Z", "+00:00"))
         observed_seconds_ago = max(0, int((now - end).total_seconds()))
-        current = agent.apply_evidence([dict(row)])[0]
+        current = agent.apply_evidence([dict(row)])[-1]
         return {
             "server_time": utc_iso(now),
             "fresh_for_seconds": STATUS_FRESH_SECONDS,
@@ -504,22 +504,17 @@ def create_app(
     def agent_summary_refresh(day: str, _: None = Depends(require_auth)) -> dict[str, Any]:
         """同步重新生成某天日报叙述（Agent ②）。失败时返回空 narrative。"""
         rows = agent.apply_evidence(_day_segments_with_gaps(day, None))
-        database.replace_combined_segments(day, _build_combined(analyzer, database, day))
         combined = []
-        for row in database.combined_for_day(day):
+        for row in combine_segments(rows):
             item = dict(row)
             start = datetime.fromisoformat(item["start_time"].replace("Z", "+00:00"))
             end = datetime.fromisoformat(item["end_time"].replace("Z", "+00:00"))
             item["duration_seconds"] = max(0, int((end - start).total_seconds()))
             item["start_time_local"] = start.astimezone(analyzer.timezone).isoformat(timespec="seconds")
             item["end_time_local"] = end.astimezone(analyzer.timezone).isoformat(timespec="seconds")
-            item["secondary"] = json.loads(item.pop("secondary_json", "[]"))
+            item.setdefault("secondary", json.loads(item.pop("secondary_json", "[]")))
             combined.append(item)
-        summary_seconds: dict[str, int] = defaultdict(int)
-        for row in rows:
-            row_start = datetime.fromisoformat(row["start_time"].replace("Z", "+00:00"))
-            row_end = datetime.fromisoformat(row["end_time"].replace("Z", "+00:00"))
-            summary_seconds[row["category"]] += max(0, int((row_end - row_start).total_seconds()))
+        summary_seconds = _merge_overlap_seconds(combined, "category")
         insights = build_insights([row for row in rows if row["category"] != NO_DEVICE_CATEGORY], analyzer.timezone)
         payload = {
             "summary": [{"category": category, "seconds": summary_seconds.get(category, 0)} for category in SUMMARY_CATEGORIES],
@@ -545,6 +540,7 @@ def create_app(
                 "hit_count": row["hit_count"],
                 "last_seen_at": row["last_seen_at"],
                 "created_at": row["created_at"],
+                "time_pattern": json.loads(row["context_json"]),
             }
             for row in database.list_memories()
         ]
@@ -574,6 +570,29 @@ def create_app(
         if not database.delete_memory(memory_id):
             raise HTTPException(status_code=404, detail="memory not found")
         return {"id": memory_id, "deleted": True}
+
+    @application.post("/api/v1/offline-activities")
+    def add_offline_activity(payload: OfflineActivityRequest, _: None = Depends(require_auth)) -> dict[str, Any]:
+        patterns = habit_patterns(payload.start_time, payload.end_time, analyzer.timezone) if payload.remember else []
+        annotation_id = database.add_offline_annotation(
+            utc_iso(payload.start_time), utc_iso(payload.end_time), payload.category, payload.note, patterns
+        )
+        # Date ranges survive segment rebuilds, including periods with no device rows.
+        return {"id": annotation_id, "category": payload.category, "remembered": bool(patterns)}
+
+    @application.get("/api/v1/offline-activities")
+    def list_offline_activities(day: str, _: None = Depends(require_auth)) -> dict[str, Any]:
+        try:
+            start, end = analyzer.local_day_bounds(day)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="invalid day")
+        return {"activities": database.offline_annotations(utc_iso(start), utc_iso(end))}
+
+    @application.delete("/api/v1/offline-activities/{annotation_id}")
+    def delete_offline_activity(annotation_id: int, _: None = Depends(require_auth)) -> dict[str, Any]:
+        if not database.delete_offline_annotation(annotation_id):
+            raise HTTPException(status_code=404, detail="offline activity not found")
+        return {"id": annotation_id, "deleted": True}
 
     application.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 

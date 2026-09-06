@@ -149,6 +149,15 @@ CREATE TABLE IF NOT EXISTS agent_memory (
 
 CREATE INDEX IF NOT EXISTS idx_agent_memory_scope
 ON agent_memory(scope, status);
+
+CREATE TABLE IF NOT EXISTS offline_annotations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    category TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+);
 """
 
 
@@ -168,6 +177,9 @@ class Database:
             self._ensure_column(connection, "activity_segments", "purpose", "TEXT NOT NULL DEFAULT '其他'")
             self._ensure_column(connection, "combined_segments", "topic", "TEXT NOT NULL DEFAULT ''")
             self._ensure_column(connection, "classification_evidence", "hit_count", "INTEGER NOT NULL DEFAULT 0")
+            self._ensure_column(connection, "classification_evidence", "context_version", "TEXT NOT NULL DEFAULT ''")
+            self._ensure_column(connection, "agent_memory", "context_json", "TEXT NOT NULL DEFAULT '{}'")
+            self._ensure_column(connection, "agent_memory", "annotation_id", "INTEGER")
 
     @staticmethod
     def _ensure_column(
@@ -284,7 +296,7 @@ class Database:
                         segment["scroll_count"],
                         json.dumps(segment["interruptions"], ensure_ascii=False),
                         int(corrected is not None),
-                        segment.get("purpose", "其他"),
+                        corrected["purpose"] if corrected else segment.get("purpose", "其他"),
                         now,
                     ),
                 )
@@ -455,17 +467,22 @@ class Database:
                 """
             ).fetchone()
 
-    def evidence_map(self, digests: list[str]) -> dict[str, sqlite3.Row]:
+    def evidence_map(self, digests: list[str], include_revoked: bool = False) -> dict[str, sqlite3.Row]:
         """Return non-revoked agent evidence rows keyed by digest."""
         if not digests:
             return {}
-        placeholders = ",".join("?" * len(digests))
+        digests = list(set(digests))
         with self.connect() as connection:
-            rows = connection.execute(
-                f"SELECT * FROM classification_evidence WHERE digest IN ({placeholders}) AND revoked = 0",
-                digests,
-            )
-            return {row["digest"]: row for row in rows}
+            result = {}
+            for offset in range(0, len(digests), 500):
+                chunk = digests[offset:offset + 500]
+                placeholders = ",".join("?" * len(chunk))
+                suffix = "" if include_revoked else " AND revoked = 0"
+                rows = connection.execute(
+                    f"SELECT * FROM classification_evidence WHERE digest IN ({placeholders}){suffix}", chunk
+                )
+                result.update({row["digest"]: row for row in rows})
+            return result
 
     def upsert_evidence(self, record: dict[str, Any]) -> None:
         now = utc_iso(datetime.now(timezone.utc))
@@ -474,8 +491,8 @@ class Database:
                 """
                 INSERT INTO classification_evidence (
                     digest, platform, process, title_summary, behavior, purpose, category, topic,
-                    description, confidence, explanation, model, input_json, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    description, confidence, explanation, model, input_json, created_at, context_version
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(digest) DO UPDATE SET
                     behavior = excluded.behavior,
                     purpose = excluded.purpose,
@@ -486,8 +503,9 @@ class Database:
                     explanation = excluded.explanation,
                     model = excluded.model,
                     input_json = excluded.input_json,
-                    revoked = 0,
+                    context_version = excluded.context_version,
                     created_at = excluded.created_at
+                WHERE classification_evidence.revoked = 0
                 """,
                 (
                     record["digest"],
@@ -504,6 +522,7 @@ class Database:
                     record.get("model", ""),
                     json.dumps(record.get("input", {}), ensure_ascii=False),
                     now,
+                    record.get("context_version", ""),
                 ),
             )
 
@@ -584,7 +603,7 @@ class Database:
                     """
                     SELECT * FROM agent_memory
                     WHERE scope = ? AND status = 'active'
-                    ORDER BY confidence DESC, id DESC
+                    ORDER BY CASE source WHEN 'correction' THEN 0 WHEN 'manual' THEN 1 ELSE 2 END, confidence DESC, id DESC
                     LIMIT 20
                     """,
                     (key,),
@@ -634,3 +653,54 @@ class Database:
                 "UPDATE agent_memory SET hit_count = hit_count + 1, last_seen_at = ? WHERE id = ?",
                 [(now, memory_id) for memory_id in memory_ids],
             )
+
+    def memory_version(self) -> str:
+        """Semantic revision excludes read counters; edits invalidate cached judgments."""
+        import hashlib
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT id, kind, scope, category, content, confidence, context_json FROM agent_memory WHERE status = 'active' ORDER BY id"
+            ).fetchall()
+        return hashlib.sha256(json.dumps([tuple(row) for row in rows], ensure_ascii=False).encode()).hexdigest() if rows else ""
+
+    def offline_memories(self) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            return [dict(row) for row in connection.execute(
+                "SELECT * FROM agent_memory WHERE scope = 'offline' AND status = 'active' AND source = 'correction' ORDER BY id DESC"
+            )]
+
+    def offline_annotations(self, start: str, end: str) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            return [dict(row) for row in connection.execute(
+                "SELECT * FROM offline_annotations WHERE start_time < ? AND end_time > ? ORDER BY id", (end, start)
+            )]
+
+    def add_offline_annotation(self, start: str, end: str, category: str, note: str, patterns: list[dict]) -> int:
+        now = utc_iso(datetime.now(timezone.utc))
+        with self._write_lock, self.connect() as connection:
+            cursor = connection.execute(
+                "INSERT INTO offline_annotations (start_time, end_time, category, note, created_at) VALUES (?, ?, ?, ?, ?)",
+                (start, end, category, note, now),
+            )
+            annotation_id = cursor.lastrowid
+            for pattern in patterns:
+                context = json.dumps(pattern, sort_keys=True)
+                # The latest explicit habit for precisely this interval replaces the old one.
+                connection.execute(
+                    "UPDATE agent_memory SET status = 'superseded', updated_at = ? WHERE scope = 'offline' AND context_json = ? AND status = 'active'",
+                    (now, context),
+                )
+                start_min, end_min = pattern['start_minute'], pattern['end_minute']
+                label = '工作日' if pattern['day_type'] == 'weekday' else '周末'
+                content = f"用户确认的时段习惯：{label} {start_min // 60:02d}:{start_min % 60:02d}—{end_min // 60:02d}:{end_min % 60:02d} 通常为{category}；仅作推测依据，不代表每天必然如此。"
+                connection.execute(
+                    "INSERT INTO agent_memory (kind, scope, category, content, source, confidence, status, created_at, updated_at, context_json, annotation_id) VALUES ('pattern', 'offline', ?, ?, 'correction', 1, 'active', ?, ?, ?, ?)",
+                    (category, content, now, now, context, annotation_id),
+                )
+            return int(annotation_id)
+
+    def delete_offline_annotation(self, annotation_id: int) -> bool:
+        with self._write_lock, self.connect() as connection:
+            cursor = connection.execute("DELETE FROM offline_annotations WHERE id = ?", (annotation_id,))
+            connection.execute("DELETE FROM agent_memory WHERE annotation_id = ?", (annotation_id,))
+            return cursor.rowcount > 0

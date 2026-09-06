@@ -10,11 +10,14 @@ from __future__ import annotations
 
 import logging
 import threading
+import hashlib
+import json
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from .agent import SUMMARY_SYSTEM_PROMPT, AgentService, LLMClient
+from .agent import SUMMARY_SYSTEM_PROMPT, AgentService, LLMClient, invoke_llm, sanitize_title
+from .merger import combine_segments
 from .database import Database, utc_iso
 
 LOG = logging.getLogger("activitywatch.summarizer")
@@ -36,15 +39,20 @@ class DailySummarizer:
         self.model_name = agent.model_name if llm is None else "injected"
         self._generating: set[str] = set()
         self._lock = threading.Lock()
+        self._generation_lock = threading.Lock()
+        self._latest_versions: dict[str, str] = {}
 
     # ------------------------------------------------------------------
     # 版本号：片段数量 + 最后结束时间，数据没变则缓存命中
     # ------------------------------------------------------------------
     def version_for(self, rows: list[dict[str, Any]]) -> str:
-        if not rows:
-            return "0"
-        last_end = max(str(row.get("end_time") or "") for row in rows)
-        return f"{len(rows)}:{last_end}"
+        fields = ('start_time', 'end_time', 'device_id', 'platform', 'category', 'behavior', 'purpose',
+                  'description', 'topic', 'classification', 'manual_override', 'process', 'key_count',
+                  'mouse_click_count', 'scroll_count', 'interruptions_json')
+        content = [{key: row.get(key) for key in fields} for row in rows]
+        payload = {'rows': content, 'memory': self.database.memory_version(), 'model': self.model_name,
+                   'prompt': SUMMARY_SYSTEM_PROMPT}
+        return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
     _version = version_for
 
@@ -55,8 +63,12 @@ class DailySummarizer:
         payload_builder: "callable[[], dict[str, Any]]",
     ) -> dict[str, Any] | None:
         """读取缓存的日报；过期且模型可用时触发后台重生成（不阻塞）。"""
+        if self.llm is None:
+            return None
         cached = self.database.daily_summary(day)
         version = self._version(rows)
+        with self._lock:
+            self._latest_versions[day] = version
         if cached is not None and cached["version"] == version:
             return {"narrative": cached["narrative"], "source": "agent", "model": cached["model"]}
 
@@ -84,6 +96,10 @@ class DailySummarizer:
         threading.Thread(target=target, daemon=True, name=f"daily-summary-{day}").start()
 
     def generate(self, day: str, version: str, payload: dict[str, Any]) -> str | None:
+        with self._generation_lock:
+            return self._generate(day, version, payload)
+
+    def _generate(self, day: str, version: str, payload: dict[str, Any]) -> str | None:
         """同步生成并落盘；失败返回 None（daily/report 无感回退纯统计）。"""
         if self.llm is None:
             return None
@@ -94,8 +110,7 @@ class DailySummarizer:
             memory_context=self._memory_context(),
             week_context=self._week_context(day),
         )
-        LOG.info("[summary.generate] %s 日报输入 prompt（version=%s）:\n%s", day, version, prompt)
-        raw = self.llm(SUMMARY_SYSTEM_PROMPT, prompt)
+        raw = invoke_llm(self.llm, SUMMARY_SYSTEM_PROMPT, prompt, f"summary:{day}", self.model_name)
         if not raw:
             LOG.warning("[summary.generate] %s 模型调用失败或返回空，日报回退纯统计", day)
             return None
@@ -103,12 +118,15 @@ class DailySummarizer:
         if not narrative:
             LOG.warning("[summary.generate] %s 模型输出为空白", day)
             return None
-        LOG.info("[summary.generate] %s 日报输出:\n%s", day, narrative)
-        self.database.save_daily_summary(day, version, narrative, self.model_name)
+        with self._lock:
+            if self._latest_versions.get(day, version) == version:
+                self.database.save_daily_summary(day, version, narrative, self.model_name)
         return narrative
 
     def refresh(self, day: str, version: str, payload: dict[str, Any]) -> str | None:
         """手动触发同步重生成（测试/演示用）。"""
+        with self._lock:
+            self._latest_versions[day] = version
         return self.generate(day, version, payload)
 
     # ------------------------------------------------------------------
@@ -118,7 +136,7 @@ class DailySummarizer:
         memories = self.database.active_memories()
         if not memories:
             return ""
-        lines = [f"  [{row['kind']}] {row['scope']}: {row['content']}" for row in memories[:20]]
+        lines = [f"  [{row['kind']}] {row['scope']}: {sanitize_title(row['content'], 280)}" for row in memories[:20]]
         return "\n".join(lines)
 
     def _week_context(self, day: str) -> str:
@@ -133,6 +151,9 @@ class DailySummarizer:
             start = local_start.astimezone(timezone.utc)
             end = (local_start + timedelta(days=1)).astimezone(timezone.utc)
             rows = self.database.rows_between("activity_segments", utc_iso(start), utc_iso(end), None)
+            if self.agent.rows_provider is not None:
+                rows = self.agent.rows_provider(local_start.date().isoformat())
+            rows = combine_segments(self.agent.apply_evidence(rows))
             totals: dict[str, float] = {}
             for row in rows:
                 begin = datetime.fromisoformat(str(row["start_time"]).replace("Z", "+00:00"))
@@ -172,10 +193,13 @@ def _build_prompt(
                 category=segment.get("category", ""),
                 behavior=segment.get("behavior", ""),
                 purpose=segment.get("purpose", ""),
-                topic=(segment.get("classification") or {}).get("topic", "") if isinstance(segment.get("classification"), dict) else "",
+                topic=segment.get('topic') or (segment.get("classification") or {}).get("topic", ""),
                 app=segment.get("process", ""),
             )
         )
+        classification = segment.get('classification') or {}
+        if classification:
+            lines.append(f"    判断来源：{classification.get('source')}，置信度：{classification.get('confidence')}，是否推测：{classification.get('inferred', False)}")
 
     insights = payload.get("insights") or {}
     apps = [

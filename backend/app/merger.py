@@ -82,6 +82,8 @@ class _Combined:
             "description": row["description"],
             "process": row.get("process") or "",
             "topic": row.get("topic", ""),
+            "classification": row.get("classification"),
+            "offline_annotation_id": row.get("offline_annotation_id"),
             "engagement_score": round(self.main.score, 3),
             "overlap_seconds": int(self.overlap_seconds),
             "secondary": self.secondary,
@@ -98,7 +100,7 @@ def _parse_row(row: Any) -> dict[str, Any]:
 
 def _engagement(row: dict[str, Any]) -> tuple[float, str]:
     """Deterministic engagement score + human readable reason."""
-    category = row["category"]
+    category = row.get("observation_category", row["category"])
     behavior = row["behavior"]
     if category == NO_DEVICE_CATEGORY or row.get("platform") == "none":
         return SCORE_NO_DEVICE, REASON_NO_DEVICE
@@ -124,13 +126,18 @@ def _rank_key(active: _Active) -> tuple[float, int, int, str]:
     return (-active.score, platform_rank, -duration, row.get("device_id") or "")
 
 
-def _activity_key(row: dict[str, Any]) -> tuple[str, str, str, str]:
+def _activity_key(row: dict[str, Any]) -> tuple[str, ...]:
     """Identity of a device activity for merging adjacent atomic intervals."""
     return (
         row.get("device_id") or "",
         row["category"],
         row["behavior"],
         row.get("process") or "",
+        row.get("purpose") or "",
+        row.get("topic") or "",
+        row.get("description") or "",
+        str(row.get("classification") or ""),
+        str(row.get("offline_annotation_id") or ""),
     )
 
 

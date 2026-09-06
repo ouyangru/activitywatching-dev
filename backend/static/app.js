@@ -5,6 +5,8 @@ const CATEGORY_COLORS = {
   "空闲": "#e07a72",
   "其他": "#b88cff",
   "无设备记录": "#4b5563",
+  "睡眠": "#8991dd", "运动": "#42cbb2", "出游": "#e6b760",
+  "用餐": "#df9972", "通勤": "#78adc8", "休息": "#b6a2c9", "家务": "#b0c979",
 };
 const CATEGORIES = Object.keys(CATEGORY_COLORS);
 const PURPOSE_FALLBACK_COLORS = ["#6fe0a3", "#6ba7ff", "#f3b562", "#e07a72", "#b88cff", "#7fd4d4", "#d98fc0"];

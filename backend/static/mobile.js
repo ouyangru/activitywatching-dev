@@ -4,6 +4,8 @@ const CATEGORY_COLORS = {
   "娱乐": "#f3b562",
   "空闲": "#e07a72",
   "其他": "#b88cff",
+  "睡眠": "#8991dd", "运动": "#42cbb2", "出游": "#e6b760",
+  "用餐": "#df9972", "通勤": "#78adc8", "休息": "#b6a2c9", "家务": "#b0c979",
 };
 
 function formatClock(value) {
