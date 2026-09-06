@@ -275,6 +275,6 @@ h1 { margin: 0; font-size: clamp(30px, 4.2vw, 52px); line-height: 1.13; letter-s
 .distribution-scope-card { min-width: 0; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,.018); padding: 14px 10px 8px; }
 .distribution-scope-card h4 { height: 34px; margin: 0; color: #c9d5d0; font-size: 12px; line-height: 1.45; text-align: center; overflow-wrap: anywhere; }
 .content-grid.trio .distribution-pie { height: 230px; min-height: 230px; max-height: none; }
-.distribution-time-comparison { width: min(100%, 920px); min-height: 150px; margin: 0 auto; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.018); }
+.distribution-time-comparison { width: min(100%, 920px); min-height: 128px; margin: 0 auto; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.018); }
 @media (max-width: 850px) { .content-grid.trio { grid-template-columns: 1fr; } }
 @media (max-width: 560px) { .distribution-band-heading { display: block; } .distribution-band-heading p { margin-top: 6px; } }

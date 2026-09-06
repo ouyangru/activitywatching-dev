@@ -12,7 +12,7 @@ const CATEGORIES = Object.keys(CATEGORY_COLORS);
 const PURPOSE_FALLBACK_COLORS = ["#6fe0a3", "#6ba7ff", "#f3b562", "#e07a72", "#b88cff", "#7fd4d4", "#d98fc0"];
 const EDITABLE_CATEGORIES = CATEGORIES.filter((category) => category !== "无设备记录");
 const OFFLINE_CATEGORIES = ["空闲", "睡眠", "运动", "出游", "用餐", "通勤", "休息", "家务"];
-const TIMELINE_MERGE_GAP_MS = 120 * 1000;
+const TIMELINE_MERGE_GAP_MS = 5 * 60 * 1000;
 const DEVICE_DISPLAY_TIMEOUT_MS = 48 * 60 * 60 * 1000;
 const distributionCharts = [];
 let dashboardGeneration = 0;
@@ -339,7 +339,7 @@ function renderChart(items, chartId, showPercent = false) {
 
 function compactDeviceLabel(scope) {
   if (!scope.device_id) return "综合";
-  const kind = scope.platform === "android" ? "手机" : scope.platform === "windows" ? "电脑" : platformLabel(scope.platform);
+  const kind = scope.platform === "android" ? "Android" : scope.platform === "windows" ? "Windows" : platformLabel(scope.platform);
   const withoutPrefix = String(scope.device_id).replace(/^(windows|android)[-_]/i, "");
   const name = withoutPrefix.length > 10 ? `${withoutPrefix.slice(0, 5)}…${withoutPrefix.slice(-4)}` : withoutPrefix;
   return `${kind} · ${name}`;
@@ -414,14 +414,14 @@ function renderTimeComparison(scopes, chartId) {
       const rowHeight = Math.abs(api.size([0, 1])[1]);
       return {
         type: "rect",
-        shape: { x: start[0], y: start[1] - rowHeight * .24, width: Math.max(end[0] - start[0], 2), height: rowHeight * .48, r: 3 },
+        shape: { x: start[0], y: start[1] - rowHeight * .16, width: Math.max(end[0] - start[0], 2), height: rowHeight * .32, r: 2 },
         style: api.style(),
       };
     },
   }));
   timeStackChartInstance.setOption({
     animation: false,
-    grid: { left: 92, right: 12, top: 8, bottom: 30 },
+    grid: { left: 76, right: 6, top: 4, bottom: 24 },
     tooltip: {
       trigger: "item",
       formatter: (params) => {
@@ -442,7 +442,7 @@ function renderTimeComparison(scopes, chartId) {
       axisLine: { lineStyle: { color: "rgba(202,230,218,.12)" } },
       splitLine: { lineStyle: { color: "rgba(202,230,218,.07)" } },
     },
-    yAxis: { type: "category", inverse: true, data: rows, axisLabel: { color: "#c9d5d0", fontSize: 10, width: 78, overflow: "truncate" }, axisLine: { show: false }, axisTick: { show: false }, splitLine: { show: false } },
+    yAxis: { type: "category", inverse: true, data: rows, axisLabel: { color: "#c9d5d0", fontSize: 10, width: 64, overflow: "truncate" }, axisLine: { show: false }, axisTick: { show: false }, splitLine: { show: false } },
     series: seriesData,
   }, true);
 }
@@ -455,7 +455,7 @@ async function fetchDistribution(devices) {
     const responses = await Promise.all(urls.map((url) => fetch(url)));
     if (responses.some((response) => !response.ok)) throw new Error("时间分布加载失败");
     const [category, purpose, timeline] = await Promise.all(responses.map((response) => response.json()));
-    return { label: device.label, category, purpose, timeline };
+    return { ...device, label: device.label, category, purpose, timeline };
   }));
 }
 
@@ -489,7 +489,7 @@ function renderDistribution(scopes) {
     renderChart(scope.category.categories, `category-${index}`);
     renderChart(scope.purpose.categories, `purpose-${index}`, true);
   });
-  document.getElementById("time-comparison").style.height = `${Math.max(150, scopes.length * 42 + 52)}px`;
+  document.getElementById("time-comparison").style.height = `${Math.max(128, scopes.length * 34 + 42)}px`;
   renderTimeComparison(scopes, "time-comparison");
 }
 
