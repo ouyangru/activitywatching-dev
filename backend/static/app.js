@@ -11,6 +11,7 @@ const CATEGORY_COLORS = {
 const CATEGORIES = Object.keys(CATEGORY_COLORS);
 const PURPOSE_FALLBACK_COLORS = ["#6fe0a3", "#6ba7ff", "#f3b562", "#e07a72", "#b88cff", "#7fd4d4", "#d98fc0"];
 const EDITABLE_CATEGORIES = CATEGORIES.filter((category) => category !== "无设备记录");
+const DEVICE_DISPLAY_TIMEOUT_MS = 48 * 60 * 60 * 1000;
 const distributionCharts = [];
 let dashboardGeneration = 0;
 let selectedDevice = "";
@@ -193,7 +194,8 @@ function renderInsights(insights) {
 async function loadDevices() {
   const response = await fetch("/api/v1/devices");
   if (!response.ok) throw new Error("设备列表加载失败");
-  const { devices } = await response.json();
+  const payload = await response.json();
+  const devices = payload.devices.filter((device) => isDeviceVisible(device));
   const select = document.getElementById("deviceFilter");
   const current = selectedDevice;
   select.innerHTML = `<option value="">全部设备</option>` + devices.map((device) => {
@@ -202,9 +204,20 @@ async function loadDevices() {
       : `<span class="device-status is-offline" title="离线或未心跳"></span>`;
     return `<option value="${escapeHtml(device.device_id)}">${status}${platformLabel(device.platform)} · ${escapeHtml(device.device_id)}</option>`;
   }).join("");
-  if ([...select.options].some((option) => option.value === current)) select.value = current;
+  if ([...select.options].some((option) => option.value === current)) {
+    select.value = current;
+  } else {
+    selectedDevice = "";
+    select.value = "";
+  }
   renderDeviceStatusRow(devices);
   return devices;
+}
+
+function isDeviceVisible(device, now = Date.now()) {
+  if (device.is_online) return true;
+  const lastSeen = new Date(device.last_seen || "").getTime();
+  return Number.isFinite(lastSeen) && now - lastSeen <= DEVICE_DISPLAY_TIMEOUT_MS;
 }
 
 const DEVICE_ICONS = {
@@ -232,19 +245,12 @@ function renderDeviceStatusRow(devices) {
   }).join("");
 }
 
-function renderChart(items, chartId, legendId, showPercent = false) {
+function renderChart(items, chartId, showPercent = false) {
   const visible = items.filter((item) => item.seconds > 0);
   const colorFor = (name) => CATEGORY_COLORS[name] || PURPOSE_FALLBACK_COLORS[visible.findIndex((item) => item.category === name) % PURPOSE_FALLBACK_COLORS.length] || "#b88cff";
-  const legend = document.getElementById(legendId);
-  legend.innerHTML = items.map((item) => `
-    <div class="legend-row">
-      <span class="legend-dot" style="background:${colorFor(item.category)}"></span>
-      <span>${escapeHtml(item.category)}</span><b>${showPercent ? `${item.percent}% · ` : ""}${formatDuration(item.seconds)}</b>
-      ${showPercent ? `<span class="fallback-bar"><i style="width:${item.percent}%;background:${colorFor(item.category)}"></i></span>` : ""}
-    </div>`).join("");
 
   if (!window.echarts) {
-    document.getElementById(chartId).innerHTML = `<div class="empty">图表库离线，仍可查看下方统计。</div>`;
+    document.getElementById(chartId).innerHTML = `<div class="empty">图表库离线，暂时无法显示扇形图。</div>`;
     return;
   }
   const chartInstance = echarts.init(document.getElementById(chartId));
@@ -258,10 +264,17 @@ function renderChart(items, chartId, legendId, showPercent = false) {
       center: ["50%", "48%"],
       avoidLabelOverlap: true,
       itemStyle: { borderColor: "#10201e", borderWidth: 4, borderRadius: 7 },
-      label: { show: false },
+      label: {
+        show: true,
+        color: "#c9d5d0",
+        fontSize: 11,
+        lineHeight: 15,
+        formatter: showPercent ? "{b}\n{d}%" : "{b}",
+      },
+      labelLine: { length: 8, length2: 5, lineStyle: { color: "#52635d" } },
       emphasis: { scaleSize: 5 },
       data: visible.length ? visible.map((item) => ({
-        name: item.category,
+        name: showPercent && item.category === "其他" ? "未判定" : item.category,
         value: item.seconds,
         itemStyle: { color: colorFor(item.category) },
       })) : [{ name: "暂无数据", value: 1, itemStyle: { color: "#263430" } }],
@@ -360,18 +373,28 @@ async function fetchDistribution(devices) {
 
 function renderDistribution(scopes) {
   distributionCharts.splice(0).forEach((chart) => chart.dispose());
-  document.getElementById("distributionScopes").innerHTML = scopes.map((scope, index) => `
-    <section class="distribution-scope" aria-labelledby="scope-${index}">
-      <h3 id="scope-${index}">${escapeHtml(scope.label)}</h3>
-      <div class="distribution-charts">
-        <section><h4>分类使用时间</h4><div id="category-${index}" class="chart" role="img" aria-label="分类使用时间扇形图"></div><div id="category-legend-${index}" class="legend"></div></section>
-        <section><h4>目的占比</h4><div id="purpose-${index}" class="chart" role="img" aria-label="目的占比扇形图"></div><div id="purpose-legend-${index}" class="legend"></div></section>
-      </div>
-      <h4>全天时间轴</h4><div class="distribution-time-scroll"><div id="time-${index}" class="distribution-time" role="img" aria-label="00:00 至 24:00 单行时间轴"></div></div>
-    </section>`).join("");
+  const scopeCards = (kind, chartClass, ariaLabel) => scopes.map((scope, index) => `
+    <article class="distribution-scope-card">
+      <h4>${escapeHtml(scope.label)}</h4>
+      <div id="${kind}-${index}" class="${chartClass}" role="img" aria-label="${escapeHtml(scope.label)}${ariaLabel}"></div>
+    </article>`).join("");
+  const scopeStyle = `--scope-count:${scopes.length}`;
+  document.getElementById("distributionScopes").innerHTML = `
+    <section class="distribution-band" aria-labelledby="categoryDistributionTitle">
+      <div class="distribution-band-heading"><h3 id="categoryDistributionTitle">分类构成</h3><p>看今天具体做了哪些活动</p></div>
+      <div class="distribution-scope-grid" style="${scopeStyle}">${scopeCards("category", "distribution-pie", "分类扇形图")}</div>
+    </section>
+    <section class="distribution-band" aria-labelledby="timelineDistributionTitle">
+      <div class="distribution-band-heading"><h3 id="timelineDistributionTitle">全天时间轴</h3><p>所有视图均为一条 00:00—24:00 时间轴</p></div>
+      <div class="distribution-scope-grid" style="${scopeStyle}">${scopeCards("time", "distribution-time", "全天时间轴")}</div>
+    </section>
+    <section class="distribution-band" aria-labelledby="purposeDistributionTitle">
+      <div class="distribution-band-heading"><h3 id="purposeDistributionTitle">目的占比</h3><p>看时间投入方向；睡眠、运动、用餐等归入生活事务</p></div>
+      <div class="distribution-scope-grid" style="${scopeStyle}">${scopeCards("purpose", "distribution-pie", "目的占比扇形图")}</div>
+    </section>`;
   scopes.forEach((scope, index) => {
-    renderChart(scope.category.categories, `category-${index}`, `category-legend-${index}`);
-    renderChart(scope.purpose.categories, `purpose-${index}`, `purpose-legend-${index}`, true);
+    renderChart(scope.category.categories, `category-${index}`);
+    renderChart(scope.purpose.categories, `purpose-${index}`, true);
     renderTimeStack(scope.timeline.segments, `time-${index}`);
   });
 }

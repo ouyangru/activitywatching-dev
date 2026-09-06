@@ -251,17 +251,19 @@ h1 { margin: 0; font-size: clamp(30px, 4.2vw, 52px); line-height: 1.13; letter-s
 .offline-form .remember-option { flex-direction: row; align-items: center; max-width: 340px; }
 .offline-record { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 0; }
 
-/* All distribution dimensions stay visible, with one full-day row per scope. */
+/* One large distribution panel: each band compares combined and per-device data side by side. */
 .content-grid.trio { grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr); }
 .content-grid.trio .distribution-panel { grid-column: 1 / -1; }
 .distribution-note { color: var(--muted); font-size: 12px; line-height: 1.8; margin: 0 0 20px; }
-.distribution-scope { border-top: 1px solid var(--line); padding: 22px 0; min-width: 0; }
-.distribution-scope h3 { margin: 0 0 18px; font-size: 16px; overflow-wrap: anywhere; }
-.distribution-scope h4 { margin: 16px 0 8px; color: var(--muted); font-size: 13px; }
-.distribution-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; }
-.content-grid.trio .distribution-charts .chart { height: 230px; min-height: 230px; flex: none; }
-.distribution-time-scroll { overflow-x: auto; }
-.distribution-time { height: 150px; min-width: 540px; }
-.distribution-charts .legend-row { overflow-wrap: anywhere; }
+.distribution-band { border-top: 1px solid var(--line); padding: 22px 0 26px; min-width: 0; }
+.distribution-band:last-child { padding-bottom: 4px; }
+.distribution-band-heading { display: flex; align-items: baseline; gap: 14px; margin-bottom: 14px; }
+.distribution-band-heading h3 { margin: 0; font-size: 16px; }
+.distribution-band-heading p { margin: 0; color: #71847d; font-size: 11px; }
+.distribution-scope-grid { display: grid; grid-template-columns: repeat(var(--scope-count), minmax(260px, 1fr)); gap: 14px; overflow-x: auto; padding: 2px 2px 10px; scrollbar-color: rgba(145,229,182,.35) transparent; }
+.distribution-scope-card { min-width: 0; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,.018); padding: 14px 10px 8px; }
+.distribution-scope-card h4 { height: 34px; margin: 0; color: #c9d5d0; font-size: 12px; line-height: 1.45; text-align: center; overflow-wrap: anywhere; }
+.content-grid.trio .distribution-pie { height: 230px; min-height: 230px; max-height: none; }
+.distribution-time { height: 145px; min-width: 0; }
 @media (max-width: 850px) { .content-grid.trio { grid-template-columns: 1fr; } }
-@media (max-width: 560px) { .distribution-charts { grid-template-columns: 1fr; gap: 16px; } }
+@media (max-width: 560px) { .distribution-band-heading { display: block; } .distribution-band-heading p { margin-top: 6px; } }
