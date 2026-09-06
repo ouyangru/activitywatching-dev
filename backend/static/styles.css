@@ -137,6 +137,8 @@ h1 { margin: 0; font-size: clamp(30px, 4.2vw, 52px); line-height: 1.13; letter-s
 .timeline-description { margin: 0; color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .timeline-details { display: flex; align-items: center; gap: 12px; margin-top: 10px; color: #71847d; font-size: 11px; }
 .edit-category { appearance: none; color: #9db0a9; background: transparent; border: 0; border-bottom: 1px dashed #52635d; padding: 2px 18px 2px 0; cursor: pointer; }
+.remember-correction { display: inline-flex; align-items: center; gap: 5px; color: #8fb8a8; font-size: 10px; cursor: pointer; white-space: nowrap; }
+.remember-correction input { accent-color: var(--mint-strong); }
 .purpose-badge { color: #d8c7ff; border: 1px solid rgba(184,140,255,.3); background: rgba(184,140,255,.08); border-radius: 6px; padding: 2px 6px; font-size: 10px; line-height: 1.35; }
 .reason-chip { color: #8fb8a8; border: 1px dashed rgba(145,229,182,.28); border-radius: 6px; padding: 2px 7px; font-size: 10px; line-height: 1.35; }
 .secondary-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
@@ -273,6 +275,6 @@ h1 { margin: 0; font-size: clamp(30px, 4.2vw, 52px); line-height: 1.13; letter-s
 .distribution-scope-card { min-width: 0; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,.018); padding: 14px 10px 8px; }
 .distribution-scope-card h4 { height: 34px; margin: 0; color: #c9d5d0; font-size: 12px; line-height: 1.45; text-align: center; overflow-wrap: anywhere; }
 .content-grid.trio .distribution-pie { height: 230px; min-height: 230px; max-height: none; }
-.distribution-time-comparison { width: 100%; min-height: 190px; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,.018); }
+.distribution-time-comparison { width: min(100%, 920px); min-height: 150px; margin: 0 auto; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.018); }
 @media (max-width: 850px) { .content-grid.trio { grid-template-columns: 1fr; } }
 @media (max-width: 560px) { .distribution-band-heading { display: block; } .distribution-band-heading p { margin-top: 6px; } }

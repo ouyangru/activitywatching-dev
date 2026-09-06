@@ -11,6 +11,8 @@ const CATEGORY_COLORS = {
 const CATEGORIES = Object.keys(CATEGORY_COLORS);
 const PURPOSE_FALLBACK_COLORS = ["#6fe0a3", "#6ba7ff", "#f3b562", "#e07a72", "#b88cff", "#7fd4d4", "#d98fc0"];
 const EDITABLE_CATEGORIES = CATEGORIES.filter((category) => category !== "无设备记录");
+const OFFLINE_CATEGORIES = ["空闲", "睡眠", "运动", "出游", "用餐", "通勤", "休息", "家务"];
+const TIMELINE_MERGE_GAP_MS = 120 * 1000;
 const DEVICE_DISPLAY_TIMEOUT_MS = 48 * 60 * 60 * 1000;
 const distributionCharts = [];
 let dashboardGeneration = 0;
@@ -82,7 +84,10 @@ function renderTimeline(segments) {
 
   target.innerHTML = orderedSegments.map((segment) => {
     const color = CATEGORY_COLORS[segment.category] || CATEGORY_COLORS["其他"];
-    const options = EDITABLE_CATEGORIES.map((category) =>
+    const isOfflineCorrection = segment.category === "空闲" || segment.category === "无设备记录";
+    const supportsAgentMemory = isOfflineCorrection || segment.category === "其他";
+    const correctionCategories = isOfflineCorrection ? OFFLINE_CATEGORIES : EDITABLE_CATEGORIES;
+    const options = `${segment.category === "无设备记录" ? '<option value="" selected disabled>修改状态…</option>' : ""}` + correctionCategories.map((category) =>
       `<option value="${category}" ${category === segment.category ? "selected" : ""}>${category}</option>`
     ).join("");
     const interruption = segment.interruptions.length ? ` · ${segment.interruptions.length} 次短暂打断` : "";
@@ -104,7 +109,13 @@ function renderTimeline(segments) {
           <div class="timeline-details">
             <span>${formatClock(segment.start_time_local)}—${formatClock(segment.end_time_local)}</span>
             <span>${formatDuration(segment.duration_seconds)}${interruption}${manual}</span>
-            ${segment.id === null ? "" : `<select class="edit-category" data-segment-id="${segment.id}" aria-label="修改 ${escapeHtml(segment.behavior)} 的分类">${options}</select>`}
+            ${segment.id === null && !isOfflineCorrection ? "" : `<select class="edit-category"
+              data-segment-id="${segment.id ?? ""}" data-source-category="${escapeHtml(segment.category)}"
+              data-start-time="${escapeHtml(segment.start_time)}" data-end-time="${escapeHtml(segment.end_time)}"
+              aria-label="修改 ${escapeHtml(segment.behavior)} 的分类">${options}</select>`}
+            ${supportsAgentMemory ? `<label class="remember-correction" title="普通活动按应用记忆；空闲活动按相似时段记忆">
+              <input type="checkbox" data-remember-for="${segment.id ?? `${escapeHtml(segment.start_time)}|${escapeHtml(segment.end_time)}`}" checked> 让 Agent 参考
+            </label>` : ""}
           </div>
         </div>
       </article>`;
@@ -114,13 +125,29 @@ function renderTimeline(segments) {
     select.addEventListener("change", async (event) => {
       const oldValue = event.target.dataset.previous || "";
       try {
-        const response = await fetch(`/api/v1/segments/${event.target.dataset.segmentId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ category: event.target.value }),
-        });
+        const key = event.target.dataset.segmentId || `${event.target.dataset.startTime}|${event.target.dataset.endTime}`;
+        const remember = [...target.querySelectorAll("[data-remember-for]")]
+          .find((input) => input.dataset.rememberFor === key)?.checked || false;
+        const isOffline = ["空闲", "无设备记录"].includes(event.target.dataset.sourceCategory);
+        const response = isOffline
+          ? await fetch("/api/v1/offline-activities", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                start_time: event.target.dataset.startTime,
+                end_time: event.target.dataset.endTime,
+                category: event.target.value,
+                note: "从今日首页纠正",
+                remember,
+              }),
+            })
+          : await fetch(`/api/v1/segments/${event.target.dataset.segmentId}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ category: event.target.value, remember, memory_note: remember ? "从今日首页纠正" : null }),
+            });
         if (!response.ok) throw new Error("保存失败");
-        showToast("分类已保存，并会用于后续修正");
+        showToast(remember ? "状态已保存，Agent 会参考这次纠正" : "状态已保存");
         await loadDashboard(false);
       } catch (error) {
         if (oldValue) event.target.value = oldValue;
@@ -310,6 +337,48 @@ function renderChart(items, chartId, showPercent = false) {
   }, true);
 }
 
+function compactDeviceLabel(scope) {
+  if (!scope.device_id) return "综合";
+  const kind = scope.platform === "android" ? "手机" : scope.platform === "windows" ? "电脑" : platformLabel(scope.platform);
+  const withoutPrefix = String(scope.device_id).replace(/^(windows|android)[-_]/i, "");
+  const name = withoutPrefix.length > 10 ? `${withoutPrefix.slice(0, 5)}…${withoutPrefix.slice(-4)}` : withoutPrefix;
+  return `${kind} · ${name}`;
+}
+
+function mergeTimelineBlocks(segments) {
+  const ordered = [...segments].sort((left, right) => new Date(left.start_time) - new Date(right.start_time));
+  const merged = [];
+  ordered.forEach((segment) => {
+    const startMs = new Date(segment.start_time).getTime();
+    const endMs = new Date(segment.end_time).getTime();
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return;
+    const detail = {
+      behavior: segment.behavior || segment.category,
+      description: segment.description || "",
+      start: segment.start_time_local || segment.start_time,
+      end: segment.end_time_local || segment.end_time,
+    };
+    const previous = merged.at(-1);
+    if (previous && previous.category === segment.category && startMs - previous.endMs <= TIMELINE_MERGE_GAP_MS) {
+      previous.endMs = Math.max(previous.endMs, endMs);
+      previous.end = segment.end_time_local || segment.end_time;
+      previous.seconds += segment.duration_seconds ?? Math.round((endMs - startMs) / 1000);
+      previous.details.push(detail);
+      return;
+    }
+    merged.push({
+      category: segment.category,
+      startMs,
+      endMs,
+      start: segment.start_time_local || segment.start_time,
+      end: segment.end_time_local || segment.end_time,
+      seconds: segment.duration_seconds ?? Math.round((endMs - startMs) / 1000),
+      details: [detail],
+    });
+  });
+  return merged;
+}
+
 function renderTimeComparison(scopes, chartId) {
   if (!window.echarts) {
     document.getElementById(chartId).innerHTML = `<div class="empty">图表库离线，暂时无法显示时间轴。</div>`;
@@ -318,19 +387,17 @@ function renderTimeComparison(scopes, chartId) {
   const chart = document.getElementById(chartId);
   const timeStackChartInstance = echarts.init(chart);
   distributionCharts.push(timeStackChartInstance);
-  const rows = scopes.map((scope) => scope.label);
-  const segmentParts = scopes.flatMap((scope, row) => scope.timeline.segments.flatMap((segment) => {
+  const rows = scopes.map(compactDeviceLabel);
+  const segmentParts = scopes.flatMap((scope, row) => mergeTimelineBlocks(scope.timeline.segments).flatMap((block) => {
       // Use server-local clock values so browser timezone does not shift the day.
-      const startText = segment.start_time_local || segment.start_time;
-      const endText = segment.end_time_local || segment.end_time;
+      const startText = block.start;
+      const endText = block.end;
       const hour = (value) => Number(value.slice(11, 13)) + Number(value.slice(14, 16)) / 60 + Number(value.slice(17, 19)) / 3600;
       const start = hour(startText);
       const end = endText.slice(0, 10) > startText.slice(0, 10) ? 24 : hour(endText);
       if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return [];
-      return [{ category: segment.category, row, start, end,
-        block: { category: segment.category, rowLabel: scope.label,
-          start: startText, end: endText, seconds: segment.duration_seconds ?? (end - start) * 3600,
-          behaviors: [segment.behavior || segment.category], count: 1 } }];
+      return [{ category: block.category, row, start, end,
+        block: { ...block, rowLabel: compactDeviceLabel(scope) } }];
     }));
   const categories = [...new Set(segmentParts.map((part) => part.category))];
   const seriesData = categories.map((category) => ({
@@ -354,16 +421,16 @@ function renderTimeComparison(scopes, chartId) {
   }));
   timeStackChartInstance.setOption({
     animation: false,
-    grid: { left: 175, right: 18, top: 12, bottom: 34 },
+    grid: { left: 92, right: 12, top: 8, bottom: 30 },
     tooltip: {
       trigger: "item",
       formatter: (params) => {
         const block = params.data[3];
-        const behaviors = block.behaviors.length > 4
-          ? `${block.behaviors.slice(0, 4).join("、")} 等 ${block.behaviors.length} 项`
-          : block.behaviors.join("、");
-        const records = block.count > 1 ? ` · ${block.count} 段记录` : "";
-        return `${escapeHtml(block.rowLabel)} · ${escapeHtml(block.category)}<br>${escapeHtml(behaviors)}<br>${formatClock(block.start)}—${formatClock(block.end)} · ${formatDuration(block.seconds)}${records}`;
+        const details = block.details.slice(0, 8).map((detail) =>
+          `${formatClock(detail.start)}—${formatClock(detail.end)}　${escapeHtml(detail.behavior)}${detail.description ? ` · ${escapeHtml(detail.description)}` : ""}`
+        ).join("<br>");
+        const more = block.details.length > 8 ? `<br>另有 ${block.details.length - 8} 项` : "";
+        return `<strong>${escapeHtml(block.rowLabel)} · ${escapeHtml(block.category)}</strong><br>${formatClock(block.start)}—${formatClock(block.end)} · 累计 ${formatDuration(block.seconds)}${block.details.length > 1 ? `<br><br>具体分项<br>${details}${more}` : `<br>${details}`}`;
       },
     },
     xAxis: {
@@ -375,7 +442,7 @@ function renderTimeComparison(scopes, chartId) {
       axisLine: { lineStyle: { color: "rgba(202,230,218,.12)" } },
       splitLine: { lineStyle: { color: "rgba(202,230,218,.07)" } },
     },
-    yAxis: { type: "category", inverse: true, data: rows, axisLabel: { color: "#c9d5d0", fontSize: 11, width: 158, overflow: "truncate" }, axisLine: { show: false }, axisTick: { show: false }, splitLine: { show: false } },
+    yAxis: { type: "category", inverse: true, data: rows, axisLabel: { color: "#c9d5d0", fontSize: 10, width: 78, overflow: "truncate" }, axisLine: { show: false }, axisTick: { show: false }, splitLine: { show: false } },
     series: seriesData,
   }, true);
 }
@@ -422,7 +489,7 @@ function renderDistribution(scopes) {
     renderChart(scope.category.categories, `category-${index}`);
     renderChart(scope.purpose.categories, `purpose-${index}`, true);
   });
-  document.getElementById("time-comparison").style.height = `${Math.max(190, scopes.length * 58 + 70)}px`;
+  document.getElementById("time-comparison").style.height = `${Math.max(150, scopes.length * 42 + 52)}px`;
   renderTimeComparison(scopes, "time-comparison");
 }
 
