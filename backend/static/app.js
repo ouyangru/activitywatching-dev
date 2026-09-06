@@ -20,6 +20,7 @@ let selectedDevice = "";
 let timelineOrder = "desc";
 let timelineView = "detail";
 let latestInsights = null;
+let pendingCombinedCorrection = null;
 
 function platformLabel(platform) {
   if (platform === "android") return "Android";
@@ -379,6 +380,62 @@ function mergeTimelineBlocks(segments) {
   return merged;
 }
 
+function openCombinedCorrection(block, scopes) {
+  const dialog = document.getElementById("combinedCorrectionDialog");
+  const categories = block.category === "空闲" ? OFFLINE_CATEGORIES : EDITABLE_CATEGORIES;
+  document.getElementById("combinedCorrectionCategory").innerHTML = categories.map((category) =>
+    `<option value="${category}" ${category === block.category ? "selected" : ""}>${category}</option>`
+  ).join("");
+  document.getElementById("combinedCorrectionSummary").textContent =
+    `${formatClock(block.start)}—${formatClock(block.end)} · 当前为“${block.category}” · ${block.details.length} 个分项`;
+  document.getElementById("combinedCorrectionRemember").checked = true;
+  const sourceSegments = scopes.slice(1).flatMap((scope) => scope.timeline.segments).filter((segment) => {
+    if (segment.id == null || segment.category !== block.category) return false;
+    const start = new Date(segment.start_time).getTime();
+    const end = new Date(segment.end_time).getTime();
+    return start < block.endMs && end > block.startMs;
+  });
+  pendingCombinedCorrection = { block, sourceSegments };
+  dialog.showModal();
+}
+
+async function saveCombinedCorrection() {
+  if (!pendingCombinedCorrection) return;
+  const { block, sourceSegments } = pendingCombinedCorrection;
+  const category = document.getElementById("combinedCorrectionCategory").value;
+  const remember = document.getElementById("combinedCorrectionRemember").checked;
+  if (category === block.category) {
+    document.getElementById("combinedCorrectionDialog").close();
+    return;
+  }
+  if (block.category === "空闲") {
+    const response = await fetch("/api/v1/offline-activities", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        start_time: new Date(block.startMs).toISOString(),
+        end_time: new Date(block.endMs).toISOString(),
+        category,
+        note: "从综合时间轴纠正",
+        remember,
+      }),
+    });
+    if (!response.ok) throw new Error("空闲状态保存失败");
+  } else {
+    if (!sourceSegments.length) throw new Error("没有找到可修改的原始片段");
+    const responses = await Promise.all(sourceSegments.map((segment) => fetch(`/api/v1/segments/${segment.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ category, remember, memory_note: remember ? "从综合时间轴纠正" : null }),
+    })));
+    if (responses.some((response) => !response.ok)) throw new Error("部分状态保存失败");
+  }
+  pendingCombinedCorrection = null;
+  document.getElementById("combinedCorrectionDialog").close();
+  showToast(remember ? "综合状态已修改，Agent 会参考这次纠正" : "综合状态已修改");
+  await loadDashboard(false);
+}
+
 function renderTimeComparison(scopes, chartId) {
   if (!window.echarts) {
     document.getElementById(chartId).innerHTML = `<div class="empty">图表库离线，暂时无法显示时间轴。</div>`;
@@ -397,7 +454,7 @@ function renderTimeComparison(scopes, chartId) {
       const end = endText.slice(0, 10) > startText.slice(0, 10) ? 24 : hour(endText);
       if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return [];
       return [{ category: block.category, row, start, end,
-        block: { ...block, rowLabel: compactDeviceLabel(scope) } }];
+        block: { ...block, rowLabel: compactDeviceLabel(scope), editable: row === 0 && ["其他", "空闲"].includes(block.category) } }];
     }));
   const categories = [...new Set(segmentParts.map((part) => part.category))];
   const seriesData = categories.map((category) => ({
@@ -415,7 +472,11 @@ function renderTimeComparison(scopes, chartId) {
       return {
         type: "rect",
         shape: { x: start[0], y: start[1] - rowHeight * .16, width: Math.max(end[0] - start[0], 2), height: rowHeight * .32, r: 2 },
-        style: api.style(),
+        style: api.style({
+          stroke: api.value(3)?.editable ? "rgba(239,247,242,.72)" : "transparent",
+          lineWidth: api.value(3)?.editable ? 1 : 0,
+        }),
+        cursor: api.value(3)?.editable ? "pointer" : "default",
       };
     },
   }));
@@ -430,7 +491,7 @@ function renderTimeComparison(scopes, chartId) {
           `${formatClock(detail.start)}—${formatClock(detail.end)}　${escapeHtml(detail.behavior)}${detail.description ? ` · ${escapeHtml(detail.description)}` : ""}`
         ).join("<br>");
         const more = block.details.length > 8 ? `<br>另有 ${block.details.length - 8} 项` : "";
-        return `<strong>${escapeHtml(block.rowLabel)} · ${escapeHtml(block.category)}</strong><br>${formatClock(block.start)}—${formatClock(block.end)} · 累计 ${formatDuration(block.seconds)}${block.details.length > 1 ? `<br><br>具体分项<br>${details}${more}` : `<br>${details}`}`;
+        return `<strong>${escapeHtml(block.rowLabel)} · ${escapeHtml(block.category)}</strong><br>${formatClock(block.start)}—${formatClock(block.end)} · 累计 ${formatDuration(block.seconds)}${block.details.length > 1 ? `<br><br>具体分项<br>${details}${more}` : `<br>${details}`}${block.editable ? "<br><br>点击修改这个综合状态" : ""}`;
       },
     },
     xAxis: {
@@ -445,6 +506,10 @@ function renderTimeComparison(scopes, chartId) {
     yAxis: { type: "category", inverse: true, data: rows, axisLabel: { color: "#c9d5d0", fontSize: 10, width: 64, overflow: "truncate" }, axisLine: { show: false }, axisTick: { show: false }, splitLine: { show: false } },
     series: seriesData,
   }, true);
+  timeStackChartInstance.on("click", (params) => {
+    const block = params.data?.[3];
+    if (block?.editable) openCombinedCorrection(block, scopes);
+  });
 }
 
 async function fetchDistribution(devices) {
@@ -575,6 +640,22 @@ document.getElementById("deviceManager").addEventListener("click", (event) => {
   const button = event.target.closest("[data-remove-device]");
   if (!button) return;
   removeDevice(button.dataset.removeDevice).catch((error) => showToast(error.message || "删除设备失败"));
+});
+document.getElementById("combinedCorrectionForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = document.getElementById("saveCombinedCorrection");
+  button.disabled = true;
+  try {
+    await saveCombinedCorrection();
+  } catch (error) {
+    showToast(error.message || "综合状态保存失败");
+  } finally {
+    button.disabled = false;
+  }
+});
+document.getElementById("cancelCombinedCorrection").addEventListener("click", () => {
+  pendingCombinedCorrection = null;
+  document.getElementById("combinedCorrectionDialog").close();
 });
 
 loadDashboard();

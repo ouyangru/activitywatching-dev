@@ -276,5 +276,18 @@ h1 { margin: 0; font-size: clamp(30px, 4.2vw, 52px); line-height: 1.13; letter-s
 .distribution-scope-card h4 { height: 34px; margin: 0; color: #c9d5d0; font-size: 12px; line-height: 1.45; text-align: center; overflow-wrap: anywhere; }
 .content-grid.trio .distribution-pie { height: 230px; min-height: 230px; max-height: none; }
 .distribution-time-comparison { width: min(100%, 920px); min-height: 128px; margin: 0 auto; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.018); }
+.correction-dialog { width: min(420px, calc(100% - 32px)); color: var(--text); background: #10201e; border: 1px solid rgba(145,229,182,.22); border-radius: 18px; padding: 0; box-shadow: var(--shadow); }
+.correction-dialog::backdrop { background: rgba(3,10,9,.72); backdrop-filter: blur(4px); }
+.correction-dialog form { display: grid; gap: 17px; padding: 25px; }
+.correction-dialog h3 { margin: -6px 0 0; font-size: 19px; }
+.correction-summary { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
+.correction-dialog form > label:not(.correction-remember) { display: flex; align-items: center; justify-content: space-between; gap: 16px; color: #c9d5d0; font-size: 12px; }
+.correction-remember { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
+.correction-remember input { margin-top: 3px; accent-color: var(--mint-strong); }
+.correction-remember strong, .correction-remember small { display: block; }
+.correction-remember strong { font-size: 12px; }
+.correction-remember small { margin-top: 4px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.correction-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.correction-save { color: #dff8e9; border-color: rgba(145,229,182,.3); background: rgba(75,209,139,.12); }
 @media (max-width: 850px) { .content-grid.trio { grid-template-columns: 1fr; } }
 @media (max-width: 560px) { .distribution-band-heading { display: block; } .distribution-band-heading p { margin-top: 6px; } }
