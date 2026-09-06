@@ -14,6 +14,8 @@ tests/                   后端和分析规则测试
 scripts/seed_demo.py     生成一组可视化演示数据
 ```
 
+Agent 语义增强层（LLM 状态判定、日报总结、长期记忆）的架构、配置与开发指南见 [AGENT.md](AGENT.md)。
+
 ## 五分钟启动
 
 在 WSL2 中进入本目录并执行：
