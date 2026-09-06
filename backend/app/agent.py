@@ -62,7 +62,8 @@ CLASSIFY_SYSTEM_PROMPT = """你是一个本机活动追踪系统的行为判定�
 判断时应优先参考 known_facts；与片段特征矛盾时以 known_facts 为准。
 请为每一条判断：用户当时最可能在做什么（behavior，如 编程/阅读文档/看视频/聊天/浏览资讯），
 这件事的目的（purpose，只能是 学习/工作/娱乐/生活事务/其他 之一），
-对应的粗分类（category，只能是 学习/工作/娱乐/空闲/其他 之一），
+对应的分类（category，设备活动只能是 学习/工作/娱乐/空闲/其他 之一；
+offline_context 条目可按下文规则使用更细的线下活动分类），
 主题（topic，不超过 12 个字，例如 "CUDA / mini-nccl"），
 一句人类可读的描述（description，不超过 30 个字），
 以及 0 到 1 的置信度（confidence）和一句话解释（explanation）。

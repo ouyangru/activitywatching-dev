@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0d1b1a">
   <title>行迹 · 今日行为时间线</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2310201e'/%3E%3Cpath d='M18 40V29M32 40V17M46 40V24' stroke='%2391e5b6' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/static/styles.css?v=20260906-4">
+  <link rel="stylesheet" href="/static/styles.css?v=20260906-5">
 </head>
 <body>
   <div class="ambient ambient-one"></div>
@@ -87,15 +87,9 @@
             <p class="eyebrow">DISTRIBUTION</p>
             <h2 id="distributionTitle">时间分布</h2>
           </div>
-          <div class="view-switch" role="tablist" aria-label="时间分布视图">
-            <button class="view-switch-button is-active" type="button" role="tab" aria-selected="true" data-view="donut">分类</button>
-            <button class="view-switch-button" type="button" role="tab" aria-selected="false" data-view="stack">按时间</button>
-            <button class="view-switch-button" type="button" role="tab" aria-selected="false" data-view="purpose">目的</button>
-          </div>
         </div>
-        <div id="chart" class="chart" role="img" aria-label="今日分类时间占比"></div>
-        <div id="timeStackChart" class="chart time-stack-chart" role="img" aria-label="今日按时间分类堆叠"></div>
-        <div id="legend" class="legend"></div>
+        <p class="distribution-note">综合视图将同时使用多个设备的时间合并为主活动；下方分别展示每台设备。分类显示时长，目的显示时长与占比。</p>
+        <div id="distributionScopes"></div>
       </section>
     </div>
 
@@ -110,6 +104,6 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js"></script>
-  <script src="/static/app.js?v=20260906-3" defer></script>
+  <script src="/static/app.js?v=20260906-5" defer></script>
 </body>
 </html>

@@ -63,9 +63,14 @@ agent_memory    ──▶ 长期记忆（注入两个 Agent 的 prompt）
 2. 手动告知：`POST /api/v1/agent/memory`
 3. 自动沉淀：Agent ① 高置信判断对同一 digest 累计 ≥5 次
 
+线下活动通过 `POST /api/v1/offline-activities` 按起止时间人工确认，可选 `remember`。
+记住后生成 `scope=offline, kind=pattern` 的工作日/周末时段习惯；它只允许 Agent
+推测睡眠、运动、出游、用餐、通勤、休息或家务，并在结果中明确标记 `inferred=true`。
+没有人工习惯、习惯冲突或判断被撤销时，空白仍保持“无设备记录/空闲”。
+
 ### daily_summaries —— 日报缓存
 
-`(day PRIMARY KEY, version, narrative, model, created_at)`。version = `片段数:最后结束时间`，数据没变直接命中缓存；变化时后台线程重生成，**请求本身永不等待 LLM**。
+`(day PRIMARY KEY, version, narrative, model, created_at)`。version 是当天语义片段、有效记忆、模型和提示词的内容摘要；这些内容没变就直接命中缓存，任一内容变化时后台线程重生成，**请求本身永不等待 LLM**。
 
 ## API 端点
 

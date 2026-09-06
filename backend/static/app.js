@@ -11,12 +11,11 @@ const CATEGORY_COLORS = {
 const CATEGORIES = Object.keys(CATEGORY_COLORS);
 const PURPOSE_FALLBACK_COLORS = ["#6fe0a3", "#6ba7ff", "#f3b562", "#e07a72", "#b88cff", "#7fd4d4", "#d98fc0"];
 const EDITABLE_CATEGORIES = CATEGORIES.filter((category) => category !== "无设备记录");
-let chartInstance = null;
-let timeStackChartInstance = null;
+const distributionCharts = [];
+let dashboardGeneration = 0;
 let selectedDevice = "";
 let timelineOrder = "desc";
 let timelineView = "detail";
-let distributionView = "donut";
 let latestInsights = null;
 
 function platformLabel(platform) {
@@ -233,25 +232,26 @@ function renderDeviceStatusRow(devices) {
   }).join("");
 }
 
-function renderChart(items) {
+function renderChart(items, chartId, legendId, showPercent = false) {
   const visible = items.filter((item) => item.seconds > 0);
   const colorFor = (name) => CATEGORY_COLORS[name] || PURPOSE_FALLBACK_COLORS[visible.findIndex((item) => item.category === name) % PURPOSE_FALLBACK_COLORS.length] || "#b88cff";
-  const legend = document.getElementById("legend");
+  const legend = document.getElementById(legendId);
   legend.innerHTML = items.map((item) => `
     <div class="legend-row">
       <span class="legend-dot" style="background:${colorFor(item.category)}"></span>
-      <span>${item.category}</span><b>${item.percent}%</b>
-      <span class="fallback-bar"><i style="width:${item.percent}%;background:${colorFor(item.category)}"></i></span>
+      <span>${escapeHtml(item.category)}</span><b>${showPercent ? `${item.percent}% · ` : ""}${formatDuration(item.seconds)}</b>
+      ${showPercent ? `<span class="fallback-bar"><i style="width:${item.percent}%;background:${colorFor(item.category)}"></i></span>` : ""}
     </div>`).join("");
 
   if (!window.echarts) {
-    document.getElementById("chart").innerHTML = `<div class="empty">图表库离线，右侧比例仍可正常查看。</div>`;
+    document.getElementById(chartId).innerHTML = `<div class="empty">图表库离线，仍可查看下方统计。</div>`;
     return;
   }
-  chartInstance ||= echarts.init(document.getElementById("chart"));
+  const chartInstance = echarts.init(document.getElementById(chartId));
+  distributionCharts.push(chartInstance);
   chartInstance.setOption({
     backgroundColor: "transparent",
-    tooltip: { trigger: "item", formatter: "{b}<br>{c} 秒 · {d}%" },
+    tooltip: { trigger: "item", formatter: (params) => `${escapeHtml(params.name)}<br>${visible.length ? formatDuration(params.value) : "暂无数据"}${showPercent && visible.length ? ` · ${params.percent}%` : ""}` },
     series: [{
       type: "pie",
       radius: ["64%", "84%"],
@@ -276,88 +276,33 @@ function renderChart(items) {
   }, true);
 }
 
-// 按时间视图：把同设备行、同类别、间隔小于阈值的连续事件合并成一个色块，详情仅在 hover 提示中展示
-const STACK_MERGE_GAP_SECONDS = 120;
-
-function mergeStackSegments(segments) {
-  const groups = new Map();
-  segments.forEach((segment) => {
-    const start = new Date(segment.start_time).getTime();
-    const end = new Date(segment.end_time).getTime();
-    if (!Number.isFinite(start) || !Number.isFinite(end)) return;
-    const rowLabel = segment.platform === "android" ? "手机" : "电脑";
-    if (!groups.has(rowLabel)) groups.set(rowLabel, []);
-    groups.get(rowLabel).push({ segment, start, end });
-  });
-  const merged = [];
-  groups.forEach((list, rowLabel) => {
-    list.sort((left, right) => left.start - right.start);
-    let current = null;
-    list.forEach(({ segment, start, end }) => {
-      if (!current || segment.category !== current.category || start - current.end > STACK_MERGE_GAP_SECONDS * 1000) {
-        if (current) merged.push(current);
-        current = {
-          category: segment.category,
-          rowLabel,
-          start,
-          end,
-          seconds: Math.max(0, Math.round((end - start) / 1000)),
-          behaviors: [segment.behavior],
-          count: 1,
-        };
-      } else {
-        current.end = Math.max(current.end, end);
-        current.seconds += Math.max(0, Math.round((end - start) / 1000));
-        if (!current.behaviors.includes(segment.behavior)) current.behaviors.push(segment.behavior);
-        current.count += 1;
-      }
-    });
-    if (current) merged.push(current);
-  });
-  return merged;
-}
-
-function renderTimeStack(segments) {
-  if (!window.echarts) return;
-  const chart = document.getElementById("timeStackChart");
-  if (!timeStackChartInstance) {
-    if (getComputedStyle(chart).display === "none") return;
-    timeStackChartInstance = echarts.init(chart);
+function renderTimeStack(segments, chartId) {
+  if (!window.echarts) {
+    document.getElementById(chartId).innerHTML = `<div class="empty">图表库离线，暂时无法显示时间轴。</div>`;
+    return;
   }
-  const rows = [
-    "00:00—08:00 电脑", "00:00—08:00 手机",
-    "08:00—16:00 电脑", "08:00—16:00 手机",
-    "16:00—24:00 电脑", "16:00—24:00 手机",
-  ];
-  const segmentParts = [];
-  mergeStackSegments(segments).forEach((block) => {
-    let cursor = block.start;
-    const end = block.end;
-    while (cursor < end) {
-      const current = new Date(cursor);
-      const dayStart = new Date(current.getFullYear(), current.getMonth(), current.getDate()).getTime();
-      const elapsedHours = (cursor - dayStart) / 3600000;
-      const timeBlock = Math.min(2, Math.floor(elapsedHours / 8));
-      const deviceRow = block.rowLabel === "手机" ? 1 : 0;
-      const row = timeBlock * 2 + deviceRow;
-      const rowEnd = dayStart + (timeBlock + 1) * 8 * 3600000;
-      const partEnd = Math.min(end, rowEnd);
-      const rowStart = dayStart + timeBlock * 8 * 3600000;
-      segmentParts.push({
-        category: block.category,
-        row,
-        start: (cursor - rowStart) / 3600000,
-        end: (partEnd - rowStart) / 3600000,
-        block,
-      });
-      cursor = partEnd;
-    }
+  const chart = document.getElementById(chartId);
+  const timeStackChartInstance = echarts.init(chart);
+  distributionCharts.push(timeStackChartInstance);
+  const rows = ["全天"];
+  const segmentParts = segments.flatMap((segment) => {
+    // Use server-local clock values so browser timezone does not shift the day.
+    const startText = segment.start_time_local || segment.start_time;
+    const endText = segment.end_time_local || segment.end_time;
+    const hour = (value) => Number(value.slice(11, 13)) + Number(value.slice(14, 16)) / 60 + Number(value.slice(17, 19)) / 3600;
+    const start = hour(startText);
+    const end = endText.slice(0, 10) > startText.slice(0, 10) ? 24 : hour(endText);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return [];
+    return [{ category: segment.category, row: 0, start, end,
+      block: { category: segment.category, rowLabel: segment.device_id || "综合",
+        start: startText, end: endText, seconds: segment.duration_seconds ?? (end - start) * 3600,
+        behaviors: [segment.behavior || segment.category], count: 1 } }];
   });
-  const seriesData = CATEGORIES.map((category) => ({
+  const seriesData = [...new Set([...CATEGORIES, ...segments.map((segment) => segment.category)])].map((category) => ({
     name: category,
     type: "custom",
     coordinateSystem: "cartesian2d",
-    itemStyle: { color: CATEGORY_COLORS[category] },
+    itemStyle: { color: CATEGORY_COLORS[category] || "#b88cff" },
     data: segmentParts
       .filter((part) => part.category === category)
       .map((part) => [part.row, part.start, part.end, part.block]),
@@ -383,15 +328,15 @@ function renderTimeStack(segments) {
           ? `${block.behaviors.slice(0, 4).join("、")} 等 ${block.behaviors.length} 项`
           : block.behaviors.join("、");
         const records = block.count > 1 ? ` · ${block.count} 段记录` : "";
-        return `${block.rowLabel} · ${block.category}<br>${escapeHtml(behaviors)}<br>${formatClock(block.start)}—${formatClock(block.end)} · ${formatDuration(block.seconds)}${records}`;
+        return `${escapeHtml(block.rowLabel)} · ${escapeHtml(block.category)}<br>${escapeHtml(behaviors)}<br>${formatClock(block.start)}—${formatClock(block.end)} · ${formatDuration(block.seconds)}${records}`;
       },
     },
     legend: { show: true, top: 0, textStyle: { color: "#91a49e", fontSize: 10 }, itemWidth: 10, itemHeight: 8 },
     xAxis: {
       type: "value",
       min: 0,
-      max: 8,
-      interval: 2,
+      max: 24,
+      interval: 4,
       axisLabel: { color: "#71847d", fontSize: 10, formatter: (value) => `${String(value).padStart(2, "0")}:00` },
       axisLine: { lineStyle: { color: "rgba(202,230,218,.12)" } },
       splitLine: { lineStyle: { color: "rgba(202,230,218,.07)" } },
@@ -401,39 +346,44 @@ function renderTimeStack(segments) {
   }, true);
 }
 
-function setDistributionView(view) {
-  const donut = document.getElementById("chart");
-  const stack = document.getElementById("timeStackChart");
-  const legend = document.getElementById("legend");
-  distributionView = view;
-  const showStack = view === "stack";
-  donut.style.display = showStack ? "none" : "block";
-  stack.classList.toggle("is-visible", showStack);
-  legend.style.display = showStack ? "none" : "grid";
-  document.querySelectorAll('[data-view]').forEach((button) => {
-    const active = button.dataset.view === view;
-    button.classList.toggle("is-active", active);
-    button.setAttribute("aria-selected", String(active));
+async function fetchDistribution(devices) {
+  return Promise.all([{ device_id: "", label: "所有设备综合" }, ...devices.map((device) => ({ ...device, label: `${platformLabel(device.platform)} · ${device.device_id}` }))].map(async (device) => {
+    const query = device.device_id ? `device_id=${encodeURIComponent(device.device_id)}` : "";
+    const urls = [`/api/v1/summary/today?${query}`, `/api/v1/summary/today?dimension=purpose&${query}`,
+      device.device_id ? `/api/v1/timeline/today?${query}` : "/api/v1/timeline/combined"];
+    const responses = await Promise.all(urls.map((url) => fetch(url)));
+    if (responses.some((response) => !response.ok)) throw new Error("时间分布加载失败");
+    const [category, purpose, timeline] = await Promise.all(responses.map((response) => response.json()));
+    return { label: device.label, category, purpose, timeline };
+  }));
+}
+
+function renderDistribution(scopes) {
+  distributionCharts.splice(0).forEach((chart) => chart.dispose());
+  document.getElementById("distributionScopes").innerHTML = scopes.map((scope, index) => `
+    <section class="distribution-scope" aria-labelledby="scope-${index}">
+      <h3 id="scope-${index}">${escapeHtml(scope.label)}</h3>
+      <div class="distribution-charts">
+        <section><h4>分类使用时间</h4><div id="category-${index}" class="chart" role="img" aria-label="分类使用时间扇形图"></div><div id="category-legend-${index}" class="legend"></div></section>
+        <section><h4>目的占比</h4><div id="purpose-${index}" class="chart" role="img" aria-label="目的占比扇形图"></div><div id="purpose-legend-${index}" class="legend"></div></section>
+      </div>
+      <h4>全天时间轴</h4><div class="distribution-time-scroll"><div id="time-${index}" class="distribution-time" role="img" aria-label="00:00 至 24:00 单行时间轴"></div></div>
+    </section>`).join("");
+  scopes.forEach((scope, index) => {
+    renderChart(scope.category.categories, `category-${index}`, `category-legend-${index}`);
+    renderChart(scope.purpose.categories, `purpose-${index}`, `purpose-legend-${index}`, true);
+    renderTimeStack(scope.timeline.segments, `time-${index}`);
   });
-  if (view === "purpose") {
-    fetch(withDevice("/api/v1/summary/today?dimension=purpose"))
-      .then((response) => response.ok ? response.json() : null)
-      .then((summary) => { if (summary) renderChart(summary.categories); })
-      .catch(() => {});
-    return;
-  }
-  if (showStack) {
-    renderTimeStack(window.timelineSegments || []);
-    requestAnimationFrame(() => timeStackChartInstance?.resize());
-  }
 }
 
 async function loadDashboard(showSuccess = false) {
+  const generation = ++dashboardGeneration;
   const button = document.getElementById("refreshButton");
   button.disabled = true;
   button.textContent = "刷新中…";
   try {
-    await loadDevices();
+    const devices = await loadDevices();
+    if (generation !== dashboardGeneration) return;
     const requests = [
       fetch(withDevice("/api/v1/timeline/today")),
       fetch(withDevice("/api/v1/summary/today")),
@@ -442,7 +392,8 @@ async function loadDashboard(showSuccess = false) {
     if (timelineView === "combined") {
       requests.push(fetch("/api/v1/timeline/combined"));
     }
-    const responses = await Promise.all(requests);
+    const [responses, distribution] = await Promise.all([Promise.all(requests), fetchDistribution(devices)]);
+    if (generation !== dashboardGeneration) return;
     if (responses.some((response) => !response.ok)) throw new Error("后端暂时不可用");
     const [timeline, summary, insights, combined] = await Promise.all(responses.map((response) => response.json()));
     const segments = timelineView === "combined" ? combined.segments : timeline.segments;
@@ -450,12 +401,7 @@ async function loadDashboard(showSuccess = false) {
     latestInsights = insights;
 
     renderTimeline(segments);
-    if (distributionView !== "purpose") {
-      renderChart(summary.categories);
-    }
-    if (distributionView === "stack") {
-      renderTimeStack(timeline.segments);
-    }
+    renderDistribution(distribution);
     renderInsights(insights);
     document.getElementById("segmentCount").textContent = timeline.segments.length;
     document.getElementById("trackedTime").textContent = formatTrackedHours(summary.total_seconds);
@@ -474,12 +420,15 @@ async function loadDashboard(showSuccess = false) {
     document.getElementById("connectionLabel").textContent = "服务已连接";
     if (showSuccess) showToast("数据已刷新");
   } catch (error) {
+    if (generation !== dashboardGeneration) return;
     document.querySelector(".live-pill").classList.add("offline");
     document.getElementById("connectionLabel").textContent = "服务未连接";
     showToast(error.message || "加载失败");
   } finally {
-    button.disabled = false;
-    button.textContent = "刷新数据";
+    if (generation === dashboardGeneration) {
+      button.disabled = false;
+      button.textContent = "刷新数据";
+    }
   }
 }
 
@@ -504,14 +453,7 @@ document.querySelectorAll("[data-timeline-view]").forEach((button) => {
     loadDashboard(false);
   });
 });
-window.addEventListener("resize", () => chartInstance?.resize());
-window.addEventListener("resize", () => timeStackChartInstance?.resize());
-document.querySelectorAll(".view-switch").forEach((group) => {
-  if (!group.querySelector("[data-view]")) return;
-  group.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-view]");
-    if (button) setDistributionView(button.dataset.view);
-  });
-});
+window.addEventListener("resize", () => distributionCharts.forEach((chart) => chart.resize()));
+
 loadDashboard();
 window.setInterval(() => loadDashboard(false), 30_000);
