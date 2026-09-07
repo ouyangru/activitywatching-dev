@@ -21,6 +21,7 @@ from .merger import combine_segments
 from .database import Database, utc_iso
 
 LOG = logging.getLogger("activitywatch.summarizer")
+DAILY_PROMPT_VERSION = "cross-device-secondary-v1"
 
 
 class DailySummarizer:
@@ -51,7 +52,7 @@ class DailySummarizer:
                   'mouse_click_count', 'scroll_count', 'interruptions_json')
         content = [{key: row.get(key) for key in fields} for row in rows]
         payload = {'rows': content, 'memory': self.database.memory_version(), 'model': self.model_name,
-                   'prompt': SUMMARY_SYSTEM_PROMPT}
+                   'prompt': SUMMARY_SYSTEM_PROMPT, 'prompt_version': DAILY_PROMPT_VERSION}
         return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
     _version = version_for
@@ -182,7 +183,7 @@ def _build_prompt(
     for item in payload.get("summary", []):
         lines.append(f"  {item['category']}: {item['seconds']}")
 
-    lines.append("主活动片段（开始小时, 时长分钟, 分类, 行为, 目的, 主题, 应用）：")
+    lines.append("跨设备活动片段（主活动用于计时；同时发生的次要设备活动也必须结合分析，不重复累计时长）：")
     for segment in payload.get("combined_segments", []):
         start_local = datetime.fromisoformat(segment["start_time_local"])
         duration_minutes = round(segment.get("duration_seconds", 0) / 60)
@@ -200,6 +201,16 @@ def _build_prompt(
         classification = segment.get('classification') or {}
         if classification:
             lines.append(f"    判断来源：{classification.get('source')}，置信度：{classification.get('confidence')}，是否推测：{classification.get('inferred', False)}")
+        for secondary in segment.get("secondary", []):
+            lines.append(
+                "    同时设备：{platform}/{device}, {category}, {behavior}, {app}".format(
+                    platform=secondary.get("platform", ""),
+                    device=secondary.get("device_id", ""),
+                    category=secondary.get("category", ""),
+                    behavior=secondary.get("behavior", ""),
+                    app=secondary.get("process", ""),
+                )
+            )
 
     insights = payload.get("insights") or {}
     apps = [

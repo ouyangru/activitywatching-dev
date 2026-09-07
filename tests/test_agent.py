@@ -18,7 +18,9 @@ from fastapi.testclient import TestClient
 
 from backend.app.agent import AgentService, evidence_digest, sanitize_title
 from backend.app.main import create_app
+from backend.app.summarizer import _build_prompt
 from tests.conftest import event
+from zoneinfo import ZoneInfo
 
 AGENT_ENV_KEYS = (
     "ACTIVITYWATCH_AGENT_BASE_URL",
@@ -83,6 +85,36 @@ def test_sanitize_title_strips_url_email_and_truncates():
     assert "https://" not in summary
     assert "someone@example.com" not in summary
     assert len(summary) <= 80
+
+
+def test_daily_prompt_includes_secondary_android_activity():
+    prompt = _build_prompt(
+        "2026-09-05",
+        {
+            "summary": [],
+            "combined_segments": [{
+                "start_time_local": "2026-09-05T10:00:00+08:00",
+                "duration_seconds": 600,
+                "category": "工作",
+                "behavior": "编程",
+                "purpose": "工作",
+                "topic": "项目",
+                "process": "Code.exe",
+                "secondary": [{
+                    "device_id": "android-phone",
+                    "platform": "android",
+                    "category": "生活事务",
+                    "behavior": "沟通",
+                    "process": "com.tencent.mm",
+                }],
+            }],
+            "insights": {},
+        },
+        ZoneInfo("Asia/Shanghai"),
+    )
+
+    assert "主活动用于计时" in prompt
+    assert "同时设备：android/android-phone, 生活事务, 沟通, com.tencent.mm" in prompt
 
 
 def test_evidence_digest_stable_and_title_sensitive():

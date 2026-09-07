@@ -319,6 +319,7 @@ def test_devices_hide_after_48_hours_without_reports(client):
     database = client.app.state.database
     with database.connect() as connection:
         connection.execute("UPDATE feature_windows SET received_at = ?", (stale_at,))
+        connection.execute("UPDATE device_reports SET last_report_at = ?", (stale_at,))
 
     assert client.get("/api/v1/devices").json()["devices"] == []
 
@@ -335,6 +336,34 @@ def test_delete_device_hides_listing_but_preserves_history_and_new_report_restor
 
     client.post("/api/v1/heartbeat", json={"device_id": "test-pc", "platform": "windows"})
     assert client.get("/api/v1/devices").json()["devices"][0]["device_id"] == "test-pc"
+
+
+def test_duplicate_android_batch_restores_stale_hidden_device(client):
+    payload = {"events": [event(
+        1,
+        "2026-09-05T00:20:00Z",
+        platform="android",
+        device_id="android-phone",
+    )]}
+    first = client.post("/api/v1/events/batch", json=payload).json()
+    assert first["accepted"] == 1
+    assert first["duplicates"] == 0
+
+    stale_at = (datetime.now(timezone.utc) - timedelta(hours=49)).isoformat()
+    database = client.app.state.database
+    with database.connect() as connection:
+        connection.execute("UPDATE feature_windows SET received_at = ?", (stale_at,))
+        connection.execute("UPDATE device_reports SET last_report_at = ?", (stale_at,))
+
+    assert client.delete("/api/v1/devices/android-phone").status_code == 200
+    assert client.get("/api/v1/devices").json()["devices"] == []
+
+    retried = client.post("/api/v1/events/batch", json=payload).json()
+    assert retried["accepted"] == 0
+    assert retried["duplicates"] == 1
+    devices = client.get("/api/v1/devices").json()["devices"]
+    assert devices[0]["device_id"] == "android-phone"
+    assert devices[0]["platform"] == "android"
 
 
 def test_delete_unknown_device_returns_not_found(client):
