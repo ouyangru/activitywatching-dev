@@ -149,11 +149,12 @@ class DailySummarizer:
         lines: list[str] = []
         for offset in range(6, 0, -1):
             local_start = base - timedelta(days=offset)
-            start = local_start.astimezone(timezone.utc)
-            end = (local_start + timedelta(days=1)).astimezone(timezone.utc)
-            rows = self.database.rows_between("activity_segments", utc_iso(start), utc_iso(end), None)
             if self.agent.rows_provider is not None:
                 rows = self.agent.rows_provider(local_start.date().isoformat())
+            else:
+                start = local_start.astimezone(timezone.utc)
+                end = (local_start + timedelta(days=1)).astimezone(timezone.utc)
+                rows = self.database.rows_between("activity_segments", utc_iso(start), utc_iso(end), None)
             rows = combine_segments(self.agent.apply_evidence(rows))
             totals: dict[str, float] = {}
             for row in rows:

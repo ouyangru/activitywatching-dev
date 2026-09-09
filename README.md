@@ -16,6 +16,8 @@ scripts/seed_demo.py     生成一组可视化演示数据
 
 Agent 语义增强层（LLM 状态判定、日报总结、长期记忆）的架构、配置与开发指南见 [AGENT.md](AGENT.md)。
 
+后端性能优化的背景、改动说明与实测数据见 [PERFORMANCE.md](PERFORMANCE.md)。
+
 ## 部署方式一览
 
 | 场景 | 做法 | 详细文档 |

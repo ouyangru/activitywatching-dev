@@ -14,6 +14,7 @@ from fastapi import Cookie, Depends, FastAPI, HTTPException, Query, Request, Res
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
+from zoneinfo import ZoneInfo
 
 from .agent import AgentService
 from .analyzer import ActivityAnalyzer, build_insights, serialize_segment
@@ -102,6 +103,21 @@ def _no_device_row(start: datetime, end: datetime) -> dict[str, Any]:
         "interruptions_json": "[]",
         "manual_override": 0,
     }
+
+
+def _combined_view_rows(rows: list[Any], local_timezone: ZoneInfo) -> list[dict[str, Any]]:
+    """Serialize combined segment records for API responses (local times, secondary)."""
+    segments = []
+    for row in rows:
+        item = dict(row)
+        start = datetime.fromisoformat(item["start_time"].replace("Z", "+00:00"))
+        end = datetime.fromisoformat(item["end_time"].replace("Z", "+00:00"))
+        item["duration_seconds"] = max(0, int((end - start).total_seconds()))
+        item["start_time_local"] = start.astimezone(local_timezone).isoformat(timespec="seconds")
+        item["end_time_local"] = end.astimezone(local_timezone).isoformat(timespec="seconds")
+        item.setdefault("secondary", json.loads(item.pop("secondary_json", "[]")))
+        segments.append(item)
+    return segments
 
 
 def _merge_overlap_seconds(rows: list[Any], dimension: str) -> dict[str, int]:
@@ -224,7 +240,7 @@ def create_app(
         rebuilt = sum(analyzer.rebuild_day(day, device_id) for day, device_id in affected)
         combined_rebuilt = 0
         for day in sorted({day for day, _ in affected}):
-            combined_rebuilt += database.replace_combined_segments(day, _build_combined(analyzer, database, day))
+            combined_rebuilt += database.replace_combined_segments(day, _build_combined(day))
             # Agent ① 异步增强：只投递任务，绝不阻塞写入（规则底账已就绪）
             agent.request_enrich(day)
         return {
@@ -237,22 +253,18 @@ def create_app(
     def _day_segments_with_gaps(day: str, device_id: str | None = None) -> list[Any]:
         start, end = analyzer.local_day_bounds(day)
         rows = database.rows_between("activity_segments", utc_iso(start), utc_iso(end), device_id)
-        coverage_rows = database.rows_between("feature_windows", utc_iso(start), utc_iso(end), device_id)
+        coverage_rows = database.coverage_between(utc_iso(start), utc_iso(end), device_id)
         return _with_no_device_periods(rows, coverage_rows, start, end)
 
     agent.rows_provider = _day_segments_with_gaps
 
-    def _build_combined(analyzer: ActivityAnalyzer, database: Database, day: str) -> list[dict[str, Any]]:
+    def _build_combined(day: str) -> list[dict[str, Any]]:
         """Derive cross-device primary segments for one day; original rows stay untouched.
 
         Agent evidence is applied to the per-device rows BEFORE merging, so the
         combined timeline inherits agent semantics (behavior/purpose/topic).
         """
-        start, end = analyzer.local_day_bounds(day)
-        rows = database.rows_between("activity_segments", utc_iso(start), utc_iso(end), None)
-        coverage_rows = database.rows_between("feature_windows", utc_iso(start), utc_iso(end), None)
-        rows = _with_no_device_periods(rows, coverage_rows, start, end)
-        return combine_segments(agent.apply_evidence(rows))
+        return combine_segments(agent.apply_evidence(_day_segments_with_gaps(day)))
 
     @application.get("/api/v1/timeline/today")
     def timeline_today(
@@ -260,11 +272,7 @@ def create_app(
         day: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
         device_id: str | None = None,
     ) -> dict[str, Any]:
-        start, end = analyzer.local_day_bounds(day)
-        rows = database.rows_between("activity_segments", utc_iso(start), utc_iso(end), device_id)
-        coverage_rows = database.rows_between("feature_windows", utc_iso(start), utc_iso(end), device_id)
-        rows = _with_no_device_periods(rows, coverage_rows, start, end)
-        rows = agent.apply_evidence(rows)
+        rows = agent.apply_evidence(_day_segments_with_gaps(day, device_id))
         return {
             "date": day or datetime.now(analyzer.timezone).date().isoformat(),
             "timezone": str(analyzer.timezone),
@@ -281,17 +289,7 @@ def create_app(
         Original device segments are not modified; this is a derived timeline.
         """
         effective_day = day or datetime.now(analyzer.timezone).date().isoformat()
-        rows = _build_combined(analyzer, database, effective_day)
-        segments = []
-        for row in rows:
-            item = dict(row)
-            start = datetime.fromisoformat(item["start_time"].replace("Z", "+00:00"))
-            end = datetime.fromisoformat(item["end_time"].replace("Z", "+00:00"))
-            item["duration_seconds"] = max(0, int((end - start).total_seconds()))
-            item["start_time_local"] = start.astimezone(analyzer.timezone).isoformat(timespec="seconds")
-            item["end_time_local"] = end.astimezone(analyzer.timezone).isoformat(timespec="seconds")
-            item.setdefault("secondary", json.loads(item.pop("secondary_json", "[]")))
-            segments.append(item)
+        segments = _combined_view_rows(_build_combined(effective_day), analyzer.timezone)
         return {
             "date": effective_day,
             "timezone": str(analyzer.timezone),
@@ -305,11 +303,7 @@ def create_app(
         device_id: str | None = None,
         dimension: str = Query(default="category", pattern=r"^(category|purpose|behavior)$"),
     ) -> dict[str, Any]:
-        start, end = analyzer.local_day_bounds(day)
-        rows = database.rows_between("activity_segments", utc_iso(start), utc_iso(end), device_id)
-        coverage_rows = database.rows_between("feature_windows", utc_iso(start), utc_iso(end), device_id)
-        rows = _with_no_device_periods(rows, coverage_rows, start, end)
-        rows = agent.apply_evidence(rows)
+        rows = agent.apply_evidence(_day_segments_with_gaps(day, device_id))
         # 按时间区间合并跨设备重叠段后再累计，避免多设备并行时重复计算
         seconds = _merge_overlap_seconds(combine_segments(rows), dimension)
         total = sum(seconds.values())
@@ -358,16 +352,7 @@ def create_app(
         summary_seconds = _merge_overlap_seconds(combined_rows, "category")
         total = sum(summary_seconds.values())
 
-        combined_segments = []
-        for row in combined_rows:
-            item = dict(row)
-            start = datetime.fromisoformat(item["start_time"].replace("Z", "+00:00"))
-            end = datetime.fromisoformat(item["end_time"].replace("Z", "+00:00"))
-            item["duration_seconds"] = max(0, int((end - start).total_seconds()))
-            item["start_time_local"] = start.astimezone(analyzer.timezone).isoformat(timespec="seconds")
-            item["end_time_local"] = end.astimezone(analyzer.timezone).isoformat(timespec="seconds")
-            item.setdefault("secondary", json.loads(item.pop("secondary_json", "[]")))
-            combined_segments.append(item)
+        combined_segments = _combined_view_rows(combined_rows, analyzer.timezone)
 
         insights = build_insights([row for row in rows if row["category"] != NO_DEVICE_CATEGORY], analyzer.timezone)
 
@@ -510,16 +495,7 @@ def create_app(
     def agent_summary_refresh(day: str, _: None = Depends(require_auth)) -> dict[str, Any]:
         """同步重新生成某天日报叙述（Agent ②）。失败时返回空 narrative。"""
         rows = agent.apply_evidence(_day_segments_with_gaps(day, None))
-        combined = []
-        for row in combine_segments(rows):
-            item = dict(row)
-            start = datetime.fromisoformat(item["start_time"].replace("Z", "+00:00"))
-            end = datetime.fromisoformat(item["end_time"].replace("Z", "+00:00"))
-            item["duration_seconds"] = max(0, int((end - start).total_seconds()))
-            item["start_time_local"] = start.astimezone(analyzer.timezone).isoformat(timespec="seconds")
-            item["end_time_local"] = end.astimezone(analyzer.timezone).isoformat(timespec="seconds")
-            item.setdefault("secondary", json.loads(item.pop("secondary_json", "[]")))
-            combined.append(item)
+        combined = _combined_view_rows(combine_segments(rows), analyzer.timezone)
         summary_seconds = _merge_overlap_seconds(combined, "category")
         insights = build_insights([row for row in rows if row["category"] != NO_DEVICE_CATEGORY], analyzer.timezone)
         payload = {

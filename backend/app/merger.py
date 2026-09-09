@@ -159,20 +159,30 @@ def combine_segments(rows: list[Any]) -> list[dict[str, Any]]:
         boundaries.add(row["_end"])
     points = sorted(boundaries)
 
-    actives_by_row_id: dict[int, _Active] = {}
+    # Interval sweep: rows sorted by start, added when they begin, dropped when
+    # they end, so each interval only examines its actually overlapping rows.
+    events = sorted((row["_start"], index) for index, row in enumerate(parsed))
+    actives_by_index: dict[int, _Active] = {}
     combined: list[_Combined] = []
+    active: list[int] = []
+    next_event = 0
 
     for interval_start, interval_end in zip(points, points[1:]):
-        overlapping = [row for row in parsed if row["_start"] < interval_end and row["_end"] > interval_start]
-        if not overlapping:
+        while next_event < len(events) and events[next_event][0] < interval_end:
+            active.append(events[next_event][1])
+            next_event += 1
+        active = [index for index in active if parsed[index]["_end"] > interval_start]
+        if not active:
             continue
+        # Original input order keeps min()'s tie-breaking identical to a full scan.
+        active.sort()
         active_list: list[_Active] = []
-        for row in overlapping:
-            row_id = id(row)
-            if row_id not in actives_by_row_id:
+        for index in active:
+            if index not in actives_by_index:
+                row = parsed[index]
                 score, reason = _engagement(row)
-                actives_by_row_id[row_id] = _Active(row=row, score=score, reason=reason)
-            active_list.append(actives_by_row_id[row_id])
+                actives_by_index[index] = _Active(row=row, score=score, reason=reason)
+            active_list.append(actives_by_index[index])
 
         real_devices = [item for item in active_list if item.platform in {"windows", "android"}]
         winner = min(active_list, key=_rank_key)

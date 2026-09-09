@@ -37,6 +37,8 @@ CREATE TABLE IF NOT EXISTS feature_windows (
 
 CREATE INDEX IF NOT EXISTS idx_feature_windows_time
 ON feature_windows(start_time);
+CREATE INDEX IF NOT EXISTS idx_feature_windows_device_time
+ON feature_windows(device_id, start_time);
 
 CREATE TABLE IF NOT EXISTS activity_segments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,6 +63,8 @@ CREATE TABLE IF NOT EXISTS activity_segments (
 
 CREATE INDEX IF NOT EXISTS idx_activity_segments_time
 ON activity_segments(start_time, end_time);
+CREATE INDEX IF NOT EXISTS idx_activity_segments_device_time
+ON activity_segments(device_id, start_time);
 
 CREATE TABLE IF NOT EXISTS combined_segments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -181,6 +185,8 @@ class Database:
         self.path = Path(path).resolve()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._write_lock = threading.RLock()
+        self._memory_version_lock = threading.Lock()
+        self._memory_version_cache: str | None = None
         with self.connect() as connection:
             connection.executescript(SCHEMA)
             self._ensure_column(connection, "feature_windows", "platform", "TEXT NOT NULL DEFAULT 'windows'")
@@ -207,6 +213,9 @@ class Database:
     def connect(self) -> Iterator[sqlite3.Connection]:
         connection = sqlite3.connect(self.path, timeout=30)
         connection.row_factory = sqlite3.Row
+        # WAL + NORMAL is the standard pairing: far fewer fsyncs per commit with
+        # no risk of corruption. journal_mode=WAL persists in the database file.
+        connection.execute("PRAGMA synchronous=NORMAL")
         try:
             yield connection
             connection.commit()
@@ -214,7 +223,6 @@ class Database:
             connection.close()
 
     def insert_windows(self, events: list[FeatureWindow]) -> tuple[int, int]:
-        accepted = 0
         now = utc_iso(datetime.now(timezone.utc))
         with self._write_lock, self.connect() as connection:
             reporting_devices = {(event.device_id, event.platform) for event in events}
@@ -235,17 +243,17 @@ class Database:
                 """,
                 [(device_id, platform, now) for device_id, platform in reporting_devices],
             )
-            for event in events:
-                interaction = event.interaction
-                cursor = connection.execute(
-                    """
-                    INSERT OR IGNORE INTO feature_windows (
-                        device_id, platform, sequence, start_time, duration_ms, process, window_title,
-                        key_count, mouse_click_count, scroll_count, idle_ms,
-                        clipboard_copy_count, clipboard_paste_count, clipboard_events_json,
-                        received_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
+            before = connection.total_changes
+            connection.executemany(
+                """
+                INSERT OR IGNORE INTO feature_windows (
+                    device_id, platform, sequence, start_time, duration_ms, process, window_title,
+                    key_count, mouse_click_count, scroll_count, idle_ms,
+                    clipboard_copy_count, clipboard_paste_count, clipboard_events_json,
+                    received_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
                     (
                         event.device_id,
                         event.platform,
@@ -254,20 +262,23 @@ class Database:
                         event.duration_ms,
                         event.context.process,
                         event.context.window_title,
-                        interaction.key_count,
-                        interaction.mouse_click_count,
-                        interaction.scroll_count,
-                        interaction.idle_ms,
-                        interaction.clipboard_copy_count,
-                        interaction.clipboard_paste_count,
+                        event.interaction.key_count,
+                        event.interaction.mouse_click_count,
+                        event.interaction.scroll_count,
+                        event.interaction.idle_ms,
+                        event.interaction.clipboard_copy_count,
+                        event.interaction.clipboard_paste_count,
                         json.dumps(
-                            [item.model_dump(mode="json") for item in interaction.clipboard_events],
+                            [item.model_dump(mode="json") for item in event.interaction.clipboard_events],
                             ensure_ascii=False,
                         ),
                         now,
-                    ),
-                )
-                accepted += int(cursor.rowcount == 1)
+                    )
+                    for event in events
+                ],
+            )
+            # INSERT OR IGNORE only counts actually inserted rows.
+            accepted = connection.total_changes - before
         return accepted, len(events) - accepted
 
     def rows_between(self, table: str, start: str, end: str, device_id: str | None = None) -> list[sqlite3.Row]:
@@ -282,38 +293,53 @@ class Database:
         with self.connect() as connection:
             return list(connection.execute(f"SELECT * FROM {table} WHERE {where} ORDER BY {order}", params))
 
+    def coverage_between(self, start: str, end: str, device_id: str | None = None) -> list[sqlite3.Row]:
+        """Coverage probe for gap filling: only the columns the caller reads, so
+        window_title/clipboard payloads are not dragged along for every request."""
+        where = "start_time >= ? AND start_time < ?"
+        params: list[Any] = [start, end]
+        if device_id:
+            where += " AND device_id = ?"
+            params.append(device_id)
+        with self.connect() as connection:
+            return list(
+                connection.execute(
+                    f"SELECT start_time, duration_ms FROM feature_windows WHERE {where} ORDER BY start_time ASC",
+                    params,
+                )
+            )
+
     def replace_segments(self, start: str, end: str, segments: list[dict[str, Any]], device_id: str) -> int:
         now = utc_iso(datetime.now(timezone.utc))
         with self._write_lock, self.connect() as connection:
-            old_manual = list(
-                connection.execute(
+            old_manual = [
+                {
+                    "behavior": row["behavior"],
+                    "category": row["category"],
+                    "purpose": row["purpose"],
+                    "start": datetime.fromisoformat(row["start_time"].replace("Z", "+00:00")),
+                    "end": datetime.fromisoformat(row["end_time"].replace("Z", "+00:00")),
+                }
+                for row in connection.execute(
                     """SELECT * FROM activity_segments
                     WHERE device_id = ? AND start_time >= ? AND start_time < ? AND manual_override = 1""",
                     (device_id, start, end),
                 )
-            )
+            ]
             connection.execute(
                 "DELETE FROM activity_segments WHERE device_id = ? AND start_time >= ? AND start_time < ?",
                 (device_id, start, end),
             )
+            records = []
             for segment in segments:
                 corrected = self._matching_manual(segment, old_manual)
-                category = corrected["category"] if corrected else segment["category"]
-                connection.execute(
-                    """
-                    INSERT INTO activity_segments (
-                        device_id, platform, start_time, end_time, category, base_category, behavior,
-                        description, process, window_title, window_count, key_count,
-                        mouse_click_count, scroll_count, interruptions_json, manual_override,
-                        purpose, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
+                records.append(
                     (
                         device_id,
                         segment["platform"],
                         segment["start_time"],
                         segment["end_time"],
-                        category,
+                        corrected["category"] if corrected else segment["category"],
                         segment["category"],
                         segment["behavior"],
                         segment["description"],
@@ -327,22 +353,31 @@ class Database:
                         int(corrected is not None),
                         corrected["purpose"] if corrected else segment.get("purpose", "其他"),
                         now,
-                    ),
+                    )
                 )
+            connection.executemany(
+                """
+                INSERT INTO activity_segments (
+                    device_id, platform, start_time, end_time, category, base_category, behavior,
+                    description, process, window_title, window_count, key_count,
+                    mouse_click_count, scroll_count, interruptions_json, manual_override,
+                    purpose, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                records,
+            )
         return len(segments)
 
     @staticmethod
-    def _matching_manual(segment: dict[str, Any], old_rows: list[sqlite3.Row]) -> sqlite3.Row | None:
+    def _matching_manual(segment: dict[str, Any], old_rows: list[dict[str, Any]]) -> dict[str, Any] | None:
         new_start = datetime.fromisoformat(segment["start_time"].replace("Z", "+00:00"))
         new_end = datetime.fromisoformat(segment["end_time"].replace("Z", "+00:00"))
-        best: tuple[float, sqlite3.Row] | None = None
+        best: tuple[float, dict[str, Any]] | None = None
         for row in old_rows:
             if row["behavior"] != segment["behavior"]:
                 continue
-            old_start = datetime.fromisoformat(row["start_time"].replace("Z", "+00:00"))
-            old_end = datetime.fromisoformat(row["end_time"].replace("Z", "+00:00"))
-            overlap = max(0.0, (min(new_end, old_end) - max(new_start, old_start)).total_seconds())
-            old_duration = max(0.001, (old_end - old_start).total_seconds())
+            overlap = max(0.0, (min(new_end, row["end"]) - max(new_start, row["start"])).total_seconds())
+            old_duration = max(0.001, (row["end"] - row["start"]).total_seconds())
             score = overlap / old_duration
             if score >= 0.5 and (best is None or score > best[0]):
                 best = (score, row)
@@ -405,15 +440,15 @@ class Database:
         now = utc_iso(datetime.now(timezone.utc))
         with self._write_lock, self.connect() as connection:
             connection.execute("DELETE FROM combined_segments WHERE day = ?", (day,))
-            for segment in segments:
-                connection.execute(
-                    """
-                    INSERT INTO combined_segments (
-                        day, start_time, end_time, main_device_id, main_platform, category, purpose,
-                        behavior, description, process, engagement_score, overlap_seconds,
-                        secondary_json, reason, topic, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
+            connection.executemany(
+                """
+                INSERT INTO combined_segments (
+                    day, start_time, end_time, main_device_id, main_platform, category, purpose,
+                    behavior, description, process, engagement_score, overlap_seconds,
+                    secondary_json, reason, topic, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
                     (
                         day,
                         segment["start_time"],
@@ -431,8 +466,10 @@ class Database:
                         segment.get("reason", ""),
                         segment.get("topic", ""),
                         now,
-                    ),
-                )
+                    )
+                    for segment in segments
+                ],
+            )
         return len(segments)
 
     def combined_for_day(self, day: str) -> list[sqlite3.Row]:
@@ -657,7 +694,9 @@ class Database:
                     now,
                 ),
             )
-            return int(cursor.lastrowid or 0)
+            memory_id = int(cursor.lastrowid or 0)
+        self._invalidate_memory_version()
+        return memory_id
 
     def memory_for(self, scope: str) -> list[sqlite3.Row]:
         """按进程名/主题精确匹配取 active 记忆（大小写不敏感）。"""
@@ -696,7 +735,10 @@ class Database:
     def delete_memory(self, memory_id: int) -> bool:
         with self._write_lock, self.connect() as connection:
             cursor = connection.execute("DELETE FROM agent_memory WHERE id = ?", (memory_id,))
-            return cursor.rowcount == 1
+            deleted = cursor.rowcount == 1
+        if deleted:
+            self._invalidate_memory_version()
+        return deleted
 
     def supersede_memories(self, scope: str, kind: str, keep_category: str) -> int:
         """同 scope 同 kind 且 category 不同的旧记忆标记 superseded（新纠正永远赢，旧的归档可追溯）。"""
@@ -708,7 +750,10 @@ class Database:
                 """,
                 (utc_iso(datetime.now(timezone.utc)), (scope or "").strip().lower(), kind, keep_category or ""),
             )
-            return cursor.rowcount
+            superseded = cursor.rowcount
+        if superseded:
+            self._invalidate_memory_version()
+        return superseded
 
     def touch_memories(self, memory_ids: list[int]) -> None:
         """记忆被注入 prompt 时更新命中计数与最后使用时间。"""
@@ -722,13 +767,27 @@ class Database:
             )
 
     def memory_version(self) -> str:
-        """Semantic revision excludes read counters; edits invalidate cached judgments."""
+        """Semantic revision excludes read counters; edits invalidate cached judgments.
+
+        Cached in-process: every read request calls this via apply_evidence, and
+        the underlying hash only changes when a memory write invalidates it."""
         import hashlib
-        with self.connect() as connection:
-            rows = connection.execute(
-                "SELECT id, kind, scope, category, content, confidence, context_json FROM agent_memory WHERE status = 'active' ORDER BY id"
-            ).fetchall()
-        return hashlib.sha256(json.dumps([tuple(row) for row in rows], ensure_ascii=False).encode()).hexdigest() if rows else ""
+        with self._memory_version_lock:
+            if self._memory_version_cache is not None:
+                return self._memory_version_cache
+            with self.connect() as connection:
+                rows = connection.execute(
+                    "SELECT id, kind, scope, category, content, confidence, context_json FROM agent_memory WHERE status = 'active' ORDER BY id"
+                ).fetchall()
+            version = hashlib.sha256(json.dumps([tuple(row) for row in rows], ensure_ascii=False).encode()).hexdigest() if rows else ""
+            self._memory_version_cache = version
+            return version
+
+    def _invalidate_memory_version(self) -> None:
+        """Call after a committed agent_memory write; touch_memories is exempt
+        because hit counters and last_seen_at are not part of the version."""
+        with self._memory_version_lock:
+            self._memory_version_cache = None
 
     def offline_memories(self) -> list[dict[str, Any]]:
         with self.connect() as connection:
@@ -764,10 +823,15 @@ class Database:
                     "INSERT INTO agent_memory (kind, scope, category, content, source, confidence, status, created_at, updated_at, context_json, annotation_id) VALUES ('pattern', 'offline', ?, ?, 'correction', 1, 'active', ?, ?, ?, ?)",
                     (category, content, now, now, context, annotation_id),
                 )
-            return int(annotation_id)
+            annotation_id = int(annotation_id)
+        self._invalidate_memory_version()
+        return annotation_id
 
     def delete_offline_annotation(self, annotation_id: int) -> bool:
         with self._write_lock, self.connect() as connection:
             cursor = connection.execute("DELETE FROM offline_annotations WHERE id = ?", (annotation_id,))
             connection.execute("DELETE FROM agent_memory WHERE annotation_id = ?", (annotation_id,))
-            return cursor.rowcount > 0
+            deleted = cursor.rowcount > 0
+        if deleted:
+            self._invalidate_memory_version()
+        return deleted

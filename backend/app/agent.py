@@ -272,9 +272,10 @@ class AgentService:
         local_start = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=self.timezone)
         start = local_start.astimezone(timezone.utc)
         end = (local_start + timedelta(days=1)).astimezone(timezone.utc)
-        rows = self.database.rows_between("activity_segments", utc_iso(start), utc_iso(end), None)
         if self.rows_provider is not None:
             rows = self.rows_provider(day)
+        else:
+            rows = self.database.rows_between("activity_segments", utc_iso(start), utc_iso(end), None)
         rows = apply_offline(self.database, rows, self.timezone)
 
         candidates: dict[str, dict[str, Any]] = {}
@@ -423,11 +424,18 @@ class AgentService:
         items = apply_offline(self.database, rows, self.timezone)
         if not items:
             return items
+        if not self.enabled:
+            # 未配置 Agent：只保留人工修正标记，不做任何证据/版本查询
+            for item in items:
+                item.setdefault("classification", None)
+                if item.get("manual_override"):
+                    item["classification"] = {"source": "manual", "confidence": 1.0}
+            return items
         digests = [
             item.get('_offline_digest') or evidence_digest(item.get("platform") or "windows", item.get("process") or "", item.get("window_title") or "")
             for item in items
         ]
-        evidence = self.database.evidence_map(digests) if self.enabled else {}
+        evidence = self.database.evidence_map(digests)
         version = self.database.memory_version()
         for item, digest in zip(items, digests):
             item.setdefault("classification", None)
