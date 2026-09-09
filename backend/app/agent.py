@@ -44,15 +44,20 @@ from .offline import apply_offline
 
 
 LOG = logging.getLogger("activitywatch.agent")
-# 输入/输出全文日志开关：默认开；设 ACTIVITYWATCH_AGENT_LOG_PAYLOADS=0 只看统计不看正文
+# 输入/输出全文日志开关：开发环境默认开，生产环境默认关；显式配置优先。
 def payload_logging_enabled() -> bool:
-    return os.getenv("ACTIVITYWATCH_AGENT_LOG_PAYLOADS", "1") != "0"
+    configured = os.getenv("ACTIVITYWATCH_AGENT_LOG_PAYLOADS")
+    if configured is not None:
+        return configured != "0"
+    return os.getenv("ACTIVITYWATCH_ENV", "development") != "production"
 
 
 TITLE_MAX_CHARS = 80
 CONFIDENCE_THRESHOLD = 0.55
 MAX_DIGESTS_PER_CALL = 20
 LLM_TIMEOUT_SECONDS = 45
+LLM_CIRCUIT_BASE_SECONDS = 60
+LLM_CIRCUIT_MAX_SECONDS = 3600
 AUTO_PROMOTE_HITS = 5
 AUTO_PROMOTE_CONFIDENCE = 0.75
 
@@ -92,6 +97,19 @@ SUMMARY_SYSTEM_PROMPT = """你是一个本机活动追踪系统的日报助手�
 
 LLMClient = Callable[[str, str], str | None]
 """llm(system_prompt, user_prompt) -> 原始回复文本或 None（失败）。"""
+
+
+def llm_cooldown_seconds(llm: LLMClient | None) -> float:
+    """返回客户端熔断剩余秒数；注入的普通 callable 始终可用。"""
+    if llm is None:
+        return 0.0
+    getter = getattr(llm, "cooldown_seconds", None)
+    if not callable(getter):
+        return 0.0
+    try:
+        return max(0.0, float(getter()))
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def invoke_llm(llm: LLMClient, system: str, user: str, kind: str, model: str) -> str | None:
@@ -136,6 +154,83 @@ def evidence_digest(platform: str, process: str, title: str) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+class OpenAICompatibleLLM:
+    """带失败退避的 OpenAI 兼容客户端，避免上游故障时形成请求风暴。"""
+
+    def __init__(self, base_url: str, api_key: str, model: str):
+        self.base_url = base_url
+        self.api_key = api_key
+        self.model = model
+        self._state_lock = threading.Lock()
+        self._consecutive_failures = 0
+        self._retry_at = 0.0
+
+    def cooldown_seconds(self) -> float:
+        with self._state_lock:
+            return max(0.0, self._retry_at - time.monotonic())
+
+    def _open_circuit(self, error: Exception, retry_after: float | None = None) -> None:
+        with self._state_lock:
+            self._consecutive_failures += 1
+            delay = retry_after or min(
+                LLM_CIRCUIT_MAX_SECONDS,
+                LLM_CIRCUIT_BASE_SECONDS * (2 ** (self._consecutive_failures - 1)),
+            )
+            self._retry_at = time.monotonic() + max(LLM_CIRCUIT_BASE_SECONDS, delay)
+        LOG.warning(
+            "[agent.llm] %s 请求失败 type=%s status=%s，暂停调用 %.0f 秒",
+            self.model,
+            type(error).__name__,
+            getattr(error, "code", "unknown"),
+            delay,
+        )
+
+    def _close_circuit(self) -> None:
+        with self._state_lock:
+            self._consecutive_failures = 0
+            self._retry_at = 0.0
+
+    def __call__(self, system_prompt: str, user_prompt: str) -> str | None:
+        if self.cooldown_seconds() > 0:
+            return None
+        payload = json.dumps(
+            {
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "temperature": 0.2,
+            }
+        ).encode("utf-8")
+        request = urllib.request.Request(
+            f"{self.base_url}/chat/completions",
+            data=payload,
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=LLM_TIMEOUT_SECONDS) as response:
+                body = json.loads(response.read().decode("utf-8"))
+            content = body["choices"][0]["message"]["content"]
+            self._close_circuit()
+            LOG.info("[agent.llm] %s 响应 %d 字符", self.model, len(content or ""))
+            return content
+        except urllib.error.HTTPError as error:
+            # 认证、余额和权限错误短期内重试没有意义；直接使用最长冷却时间。
+            retry_after = LLM_CIRCUIT_MAX_SECONDS if error.code in {401, 402, 403} else None
+            if error.code == 429:
+                try:
+                    retry_after = float(error.headers.get("Retry-After", ""))
+                except (TypeError, ValueError):
+                    retry_after = None
+            self._open_circuit(error, retry_after)
+            return None
+        except (urllib.error.URLError, TimeoutError, KeyError, IndexError, ValueError, json.JSONDecodeError) as error:
+            self._open_circuit(error)
+            return None
+
+
 def default_llm_client_from_env() -> tuple[LLMClient | None, str]:
     """从环境变量构造 OpenAI 兼容客户端；未配置时返回 (None, 原因)。"""
     base_url = os.getenv("ACTIVITYWATCH_AGENT_BASE_URL", "").rstrip("/")
@@ -146,34 +241,7 @@ def default_llm_client_from_env() -> tuple[LLMClient | None, str]:
     if os.getenv("ACTIVITYWATCH_AGENT_ENABLED", "1") == "0":
         return None, "disabled by env"
 
-    def call(system_prompt: str, user_prompt: str) -> str | None:
-        payload = json.dumps(
-            {
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "temperature": 0.2,
-            }
-        ).encode("utf-8")
-        request = urllib.request.Request(
-            f"{base_url}/chat/completions",
-            data=payload,
-            headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=LLM_TIMEOUT_SECONDS) as response:
-                body = json.loads(response.read().decode("utf-8"))
-            content = body["choices"][0]["message"]["content"]
-            LOG.info("[agent.llm] %s 响应 %d 字符", model, len(content or ""))
-            return content
-        except (urllib.error.URLError, TimeoutError, KeyError, IndexError, ValueError, json.JSONDecodeError) as error:
-            LOG.warning("[agent.llm] %s 请求失败: %r", model, error)
-            return None
-
-    return call, model
+    return OpenAICompatibleLLM(base_url, api_key, model), model
 
 
 def _interaction_profile(row: dict[str, Any]) -> dict[str, Any]:
@@ -227,7 +295,7 @@ class AgentService:
     # ------------------------------------------------------------------
     def request_enrich(self, day: str) -> bool:
         """请求后台增强某天，已排队则跳过。永不抛错、永不阻塞。"""
-        if not self.enabled:
+        if not self.enabled or self.cooldown_seconds() > 0:
             return False
         with self._pending_lock:
             if day in self._pending:
@@ -269,6 +337,8 @@ class AgentService:
         """挑出规则判为「其他」且未人工修正的片段，按 digest 去重后批量判定。"""
         if not self.enabled:
             return {"enabled": 0, "candidates": 0, "new": 0}
+        if self.cooldown_seconds() > 0:
+            return {"enabled": 1, "candidates": 0, "new": 0}
         local_start = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=self.timezone)
         start = local_start.astimezone(timezone.utc)
         end = (local_start + timedelta(days=1)).astimezone(timezone.utc)
@@ -323,9 +393,14 @@ class AgentService:
             item['_context_version'] = version
         created = 0
         for chunk_start in range(0, len(pending), MAX_DIGESTS_PER_CALL):
+            if self.cooldown_seconds() > 0:
+                break
             chunk = pending[chunk_start : chunk_start + MAX_DIGESTS_PER_CALL]
             created += self._classify_chunk(chunk)
         return {"enabled": 1, "candidates": len(candidates), "new": created}
+
+    def cooldown_seconds(self) -> float:
+        return llm_cooldown_seconds(self.llm)
 
     def _promote_from_evidence(self, evidence: dict[str, Any], day: str) -> None:
         """高置信判断重复出现后自动沉淀为长期记忆（app_fact，source=auto）。"""

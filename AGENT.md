@@ -99,7 +99,7 @@ ACTIVITYWATCH_AGENT_BASE_URL   # 如 https://api.deepseek.com/v1
 ACTIVITYWATCH_AGENT_API_KEY    # 三项齐全才启用
 ACTIVITYWATCH_AGENT_MODEL      # 如 deepseek-chat / qwen-plus / gpt-4o-mini
 ACTIVITYWATCH_AGENT_ENABLED=0  # 可选，强制关闭
-ACTIVITYWATCH_AGENT_LOG_PAYLOADS=0  # 可选，关闭 prompt 正文日志（默认开）
+ACTIVITYWATCH_AGENT_LOG_PAYLOADS=0  # 可选；开发默认开，生产默认关
 ```
 
 **什么都不配 = 完全关闭，所有接口行为与无 Agent 版本一致**（有测试专门验证这一点）。
@@ -124,6 +124,8 @@ curl -H "Authorization: Bearer $TOKEN" https://47.82.104.59/api/v1/agent/status
 | `CONFIDENCE_THRESHOLD` | 0.55 | 低于此置信度的判断不覆盖规则值 |
 | `MAX_DIGESTS_PER_CALL` | 20 | 每次 LLM 调用最多判多少条 |
 | `LLM_TIMEOUT_SECONDS` | 45 | 超时即丢弃本批，回退规则 |
+| `LLM_CIRCUIT_BASE_SECONDS` | 60 | 临时失败后的首次暂停时间，连续失败指数增长 |
+| `LLM_CIRCUIT_MAX_SECONDS` | 3600 | 失败退避上限；401/402/403 直接暂停一小时 |
 | `AUTO_PROMOTE_HITS` | 5 | 自动沉淀记忆的命中门槛 |
 | `AUTO_PROMOTE_CONFIDENCE` | 0.75 | 自动沉淀的置信度门槛 |
 | `TITLE_MAX_CHARS` | 80 | 标题脱敏截断长度 |

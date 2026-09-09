@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from .agent import SUMMARY_SYSTEM_PROMPT, AgentService, LLMClient, invoke_llm, sanitize_title
+from .agent import SUMMARY_SYSTEM_PROMPT, AgentService, LLMClient, invoke_llm, llm_cooldown_seconds, sanitize_title
 from .merger import combine_segments
 from .database import Database, utc_iso
 
@@ -73,7 +73,7 @@ class DailySummarizer:
         if cached is not None and cached["version"] == version:
             return {"narrative": cached["narrative"], "source": "agent", "model": cached["model"]}
 
-        if self.llm is not None:
+        if self.llm is not None and llm_cooldown_seconds(self.llm) <= 0:
             self._schedule_generation(day, version, payload_builder)
         if cached is not None:
             return {"narrative": cached["narrative"], "source": "agent-stale", "model": cached["model"]}
@@ -102,7 +102,7 @@ class DailySummarizer:
 
     def _generate(self, day: str, version: str, payload: dict[str, Any]) -> str | None:
         """同步生成并落盘；失败返回 None（daily/report 无感回退纯统计）。"""
-        if self.llm is None:
+        if self.llm is None or llm_cooldown_seconds(self.llm) > 0:
             return None
         prompt = _build_prompt(
             day,

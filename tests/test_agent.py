@@ -11,12 +11,19 @@
 from __future__ import annotations
 
 import json
+import urllib.error
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.app.agent import AgentService, evidence_digest, sanitize_title
+from backend.app.agent import (
+    AgentService,
+    OpenAICompatibleLLM,
+    evidence_digest,
+    payload_logging_enabled,
+    sanitize_title,
+)
 from backend.app.main import create_app
 from backend.app.summarizer import _build_prompt
 from tests.conftest import event
@@ -27,6 +34,7 @@ AGENT_ENV_KEYS = (
     "ACTIVITYWATCH_AGENT_API_KEY",
     "ACTIVITYWATCH_AGENT_MODEL",
     "ACTIVITYWATCH_AGENT_ENABLED",
+    "ACTIVITYWATCH_AGENT_LOG_PAYLOADS",
 )
 
 
@@ -85,6 +93,31 @@ def test_sanitize_title_strips_url_email_and_truncates():
     assert "https://" not in summary
     assert "someone@example.com" not in summary
     assert len(summary) <= 80
+
+
+def test_production_payload_logging_defaults_off_but_explicit_override_wins(monkeypatch):
+    monkeypatch.setenv("ACTIVITYWATCH_ENV", "production")
+    assert payload_logging_enabled() is False
+
+    monkeypatch.setenv("ACTIVITYWATCH_AGENT_LOG_PAYLOADS", "1")
+    assert payload_logging_enabled() is True
+
+
+def test_http_402_opens_llm_circuit_and_suppresses_retries(monkeypatch):
+    attempts = 0
+
+    def reject(_request, timeout):
+        nonlocal attempts
+        attempts += 1
+        raise urllib.error.HTTPError("https://llm.invalid", 402, "Payment Required", {}, None)
+
+    monkeypatch.setattr("backend.app.agent.urllib.request.urlopen", reject)
+    llm = OpenAICompatibleLLM("https://llm.invalid/v1", "secret", "test-model")
+
+    assert llm("system", "user") is None
+    assert llm.cooldown_seconds() > 3500
+    assert llm("system", "user") is None
+    assert attempts == 1
 
 
 def test_daily_prompt_includes_secondary_android_activity():

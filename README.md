@@ -48,6 +48,9 @@ ACTIVITYWATCH_LOG_LEVEL=DEBUG uvicorn backend.app.main:app --port 8765
 ```
 
 - Agent / 日报模块的日志名为 `activitywatch.agent` / `activitywatch.summarizer`，INFO 级别即可看到每次 LLM 调用的 request_id 与耗时。
+- API 请求日志名为 `activitywatch.http`，记录方法、路径、状态码、后端耗时和响应大小；查询参数不会写入日志。默认超过 200ms 记为 WARNING，可用 `ACTIVITYWATCH_SLOW_REQUEST_MS` 调整阈值。
+- 每个响应都会带 `Server-Timing` 和 `X-Response-Time-Ms`，可在浏览器开发者工具中区分后端计算与网络等待。
+- 生产环境默认不记录 Agent prompt 正文；仅在受控调试时显式设置 `ACTIVITYWATCH_AGENT_LOG_PAYLOADS=1`。
 - 数据库默认落在 `backend/data/activitywatch.db`，可用 `ACTIVITYWATCH_DB_PATH` 覆盖。
 
 ### 生产（阿里云）

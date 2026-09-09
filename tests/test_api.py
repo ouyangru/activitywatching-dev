@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import logging
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -28,6 +29,32 @@ def test_batch_is_idempotent_and_builds_timeline(client):
     assert len(recorded) == 1
     assert recorded[0]["behavior"] == "编程"
     assert recorded[0]["duration_seconds"] == 20
+
+
+def test_api_response_exposes_timing_and_logs_without_query(client, caplog):
+    with caplog.at_level(logging.INFO, logger="activitywatch.http"):
+        response = client.get("/api/v1/health?token=must-not-appear")
+
+    assert response.status_code == 200
+    assert response.headers["server-timing"].startswith("app;dur=")
+    assert float(response.headers["x-response-time-ms"]) >= 0
+    message = next(record.message for record in caplog.records if "path=/api/v1/health" in record.message)
+    assert "status=200" in message
+    assert "must-not-appear" not in message
+
+
+def test_large_json_response_is_gzip_compressed(client):
+    events = [event(i, f"2026-09-05T00:{20 + i // 6:02d}:{(i % 6) * 10:02d}Z") for i in range(1, 13)]
+    client.post("/api/v1/events/batch", json={"events": events})
+
+    response = client.get(
+        "/api/v1/timeline/today?day=2026-09-05",
+        headers={"Accept-Encoding": "gzip"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-encoding"] == "gzip"
+    assert response.json()["segments"]
 
 
 def test_timeline_marks_gaps_without_device_records(client):

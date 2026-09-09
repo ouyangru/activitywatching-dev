@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import secrets
+import time
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -13,6 +14,7 @@ from pydantic import BaseModel, Field
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 from dotenv import load_dotenv
 from zoneinfo import ZoneInfo
 
@@ -33,7 +35,15 @@ DEFAULT_RULES = BACKEND_DIR / "config" / "rules.yaml"
 SUMMARY_CATEGORIES = [*CATEGORIES, NO_DEVICE_CATEGORY]
 STATUS_FRESH_SECONDS = 120
 NO_DEVICE_MIN_SECONDS = 300
+HTTP_LOG = logging.getLogger("activitywatch.http")
 load_dotenv(BACKEND_DIR / ".env")
+
+
+def _slow_request_threshold_ms() -> float:
+    try:
+        return max(0.0, float(os.getenv("ACTIVITYWATCH_SLOW_REQUEST_MS", "200")))
+    except ValueError:
+        return 200.0
 
 
 class LoginRequest(BaseModel):
@@ -190,9 +200,10 @@ def create_app(
 
     application = FastAPI(
         title="行迹 Activity Timeline",
-        version="0.4.1",
+        version="0.4.2",
         description="Privacy-first Windows and Android activity timeline",
     )
+    application.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
     application.state.database = database
     application.state.analyzer = analyzer
     application.state.agent = agent
@@ -201,12 +212,36 @@ def create_app(
 
     @application.middleware("http")
     async def privacy_headers(request: Request, call_next):
-        response = await call_next(request)
+        started = time.monotonic()
+        try:
+            response = await call_next(request)
+        except Exception:
+            elapsed_ms = (time.monotonic() - started) * 1000
+            HTTP_LOG.exception(
+                "request failed method=%s path=%s elapsed_ms=%.1f",
+                request.method,
+                request.url.path,
+                elapsed_ms,
+            )
+            raise
+        elapsed_ms = (time.monotonic() - started) * 1000
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Server-Timing"] = f"app;dur={elapsed_ms:.1f}"
+        response.headers["X-Response-Time-Ms"] = f"{elapsed_ms:.1f}"
         if request.url.path.startswith("/api/"):
             response.headers["Cache-Control"] = "no-store"
+            threshold_ms = _slow_request_threshold_ms()
+            log = HTTP_LOG.warning if elapsed_ms >= threshold_ms else HTTP_LOG.info
+            log(
+                "request method=%s path=%s status=%d elapsed_ms=%.1f bytes=%s",
+                request.method,
+                request.url.path,
+                response.status_code,
+                elapsed_ms,
+                response.headers.get("content-length", "unknown"),
+            )
         return response
 
     def require_auth(request: Request, activity_token: str | None = Cookie(default=None)) -> None:
@@ -475,6 +510,7 @@ def create_app(
             "enabled": agent.enabled,
             "model": agent.model_name if agent.enabled else None,
             "confidence_threshold": agent.confidence_threshold,
+            "cooldown_seconds": round(agent.cooldown_seconds(), 1),
             "evidence_count": database.count("classification_evidence"),
             "memory_count": database.count("agent_memory"),
         }

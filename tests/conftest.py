@@ -7,7 +7,15 @@ from backend.app.main import create_app
 
 
 @pytest.fixture
-def client(tmp_path: Path) -> TestClient:
+def client(tmp_path: Path, monkeypatch) -> TestClient:
+    # backend/.env 可能配置真实模型；普通 API 测试不得启动后台 LLM 调用。
+    for key in (
+        "ACTIVITYWATCH_AGENT_BASE_URL",
+        "ACTIVITYWATCH_AGENT_API_KEY",
+        "ACTIVITYWATCH_AGENT_MODEL",
+        "ACTIVITYWATCH_AGENT_ENABLED",
+    ):
+        monkeypatch.delenv(key, raising=False)
     app = create_app(
         db_path=tmp_path / "test.db",
         rules_path=Path(__file__).parents[1] / "backend" / "config" / "rules.yaml",
