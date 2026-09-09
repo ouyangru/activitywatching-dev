@@ -24,6 +24,7 @@ from backend.app.agent import (
     payload_logging_enabled,
     sanitize_title,
 )
+from backend.app.database import Database
 from backend.app.main import create_app
 from backend.app.summarizer import _build_prompt
 from tests.conftest import event
@@ -118,6 +119,33 @@ def test_http_402_opens_llm_circuit_and_suppresses_retries(monkeypatch):
     assert llm.cooldown_seconds() > 3500
     assert llm("system", "user") is None
     assert attempts == 1
+
+
+def test_invalid_model_result_is_not_retried_on_every_enrich(tmp_path):
+    fake = FakeLLM(judgments=[])
+    agent = AgentService(Database(tmp_path / "invalid-result.db"), llm=fake)
+    agent.rows_provider = lambda _day: [
+        {
+            "device_id": "test-pc",
+            "platform": "windows",
+            "start_time": "2026-09-05T10:00:00.000Z",
+            "end_time": "2026-09-05T10:01:00.000Z",
+            "process": "Unknown.exe",
+            "window_title": "无法判断的窗口",
+            "category": "其他",
+            "manual_override": False,
+            "key_count": 0,
+            "mouse_click_count": 0,
+            "scroll_count": 0,
+        }
+    ]
+
+    first = agent.enrich_day("2026-09-05")
+    second = agent.enrich_day("2026-09-05")
+
+    assert first == {"enabled": 1, "candidates": 1, "new": 0}
+    assert second == {"enabled": 1, "candidates": 1, "new": 0}
+    assert len(fake.user_prompts) == 1
 
 
 def test_daily_prompt_includes_secondary_android_activity():

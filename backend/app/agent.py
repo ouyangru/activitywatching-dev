@@ -58,6 +58,7 @@ MAX_DIGESTS_PER_CALL = 20
 LLM_TIMEOUT_SECONDS = 45
 LLM_CIRCUIT_BASE_SECONDS = 60
 LLM_CIRCUIT_MAX_SECONDS = 3600
+INVALID_RESULT_RETRY_SECONDS = 3600
 AUTO_PROMOTE_HITS = 5
 AUTO_PROMOTE_CONFIDENCE = 0.75
 
@@ -286,6 +287,7 @@ class AgentService:
         self._worker_started = False
         self._enrich_lock = threading.Lock()
         self._requested_again: set[str] = set()
+        self._digest_retry_at: dict[str, float] = {}
         self.rows_provider = None
         # 每个 (digest, day) 只累计一次命中，防止重复触发沉淀
         self._hit_bumped: set[tuple[str, str]] = set()
@@ -387,8 +389,10 @@ class AgentService:
         version = self.database.memory_version()
         self._promote_from_evidence({key: row for key, row in known.items() if not row['revoked'] and row['context_version'] == version}, day)
         version = self.database.memory_version()
-        pending = [item for digest, item in candidates.items() if digest not in known or
-                   (not known[digest]['revoked'] and known[digest]['context_version'] != version)]
+        pending = [item for digest, item in candidates.items()
+                   if not self._digest_in_cooldown(digest) and
+                   (digest not in known or
+                    (not known[digest]['revoked'] and known[digest]['context_version'] != version))]
         for item in pending:
             item['_context_version'] = version
         created = 0
@@ -401,6 +405,18 @@ class AgentService:
 
     def cooldown_seconds(self) -> float:
         return llm_cooldown_seconds(self.llm)
+
+    def _digest_in_cooldown(self, digest: str) -> bool:
+        retry_at = self._digest_retry_at.get(digest, 0.0)
+        if retry_at <= time.monotonic():
+            self._digest_retry_at.pop(digest, None)
+            return False
+        return True
+
+    def _defer_digests(self, digests: set[str]) -> None:
+        retry_at = time.monotonic() + INVALID_RESULT_RETRY_SECONDS
+        for digest in digests:
+            self._digest_retry_at[digest] = retry_at
 
     def _promote_from_evidence(self, evidence: dict[str, Any], day: str) -> None:
         """高置信判断重复出现后自动沉淀为长期记忆（app_fact，source=auto）。"""
@@ -446,16 +462,19 @@ class AgentService:
         user_prompt = json.dumps([{k: v for k, v in item.items() if not k.startswith('_')} for item in chunk], ensure_ascii=False)
         raw = invoke_llm(self.llm, CLASSIFY_SYSTEM_PROMPT, user_prompt, "classify", self.model_name) if self.llm else None
         if not raw:
+            self._defer_digests(set(item["digest"] for item in chunk))
             LOG.warning("[agent.classify] 模型调用失败或返回空（%s 条丢弃，回退规则值）", len(chunk))
             return 0
         try:
             parsed = _extract_json_array(raw)
         except ValueError:
+            self._defer_digests(set(item["digest"] for item in chunk))
             LOG.warning("[agent.classify] 输出不是合法 JSON 数组，丢弃本批 %d 条", len(chunk))
             return 0
         LOG.info("[agent.classify] 解析成功 %d/%d 条，开始落库", len(parsed), len(chunk))
         created = 0
         by_digest = {item["digest"]: item for item in chunk}
+        accepted_digests: set[str] = set()
         for judgment in parsed:
             if not isinstance(judgment, dict):
                 continue
@@ -488,7 +507,16 @@ class AgentService:
                     "context_version": source.get('_context_version', ''),
                 }
             )
+            accepted_digests.add(digest)
             created += 1
+        rejected_digests = set(by_digest) - accepted_digests
+        if rejected_digests:
+            self._defer_digests(rejected_digests)
+            LOG.warning(
+                "[agent.classify] %d 条输出缺失或校验失败，暂停重试 %d 秒",
+                len(rejected_digests),
+                INVALID_RESULT_RETRY_SECONDS,
+            )
         return created
 
     # ------------------------------------------------------------------

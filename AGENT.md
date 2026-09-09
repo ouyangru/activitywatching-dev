@@ -126,6 +126,7 @@ curl -H "Authorization: Bearer $TOKEN" https://47.82.104.59/api/v1/agent/status
 | `LLM_TIMEOUT_SECONDS` | 45 | 超时即丢弃本批，回退规则 |
 | `LLM_CIRCUIT_BASE_SECONDS` | 60 | 临时失败后的首次暂停时间，连续失败指数增长 |
 | `LLM_CIRCUIT_MAX_SECONDS` | 3600 | 失败退避上限；401/402/403 直接暂停一小时 |
+| `INVALID_RESULT_RETRY_SECONDS` | 3600 | 模型遗漏条目或输出未通过校验时，该 digest 的重试间隔 |
 | `AUTO_PROMOTE_HITS` | 5 | 自动沉淀记忆的命中门槛 |
 | `AUTO_PROMOTE_CONFIDENCE` | 0.75 | 自动沉淀的置信度门槛 |
 | `TITLE_MAX_CHARS` | 80 | 标题脱敏截断长度 |
