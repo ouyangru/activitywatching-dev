@@ -659,6 +659,18 @@ def create_app(
             return redirect
         return FileResponse(STATIC_DIR / "daily.html")
 
+    @application.get("/compare", include_in_schema=False)
+    def compare(request: Request, token: str | None = Query(default=None)) -> Response:
+        if production:
+            try:
+                require_auth(request, request.cookies.get("activity_token"))
+            except HTTPException:
+                return RedirectResponse("/login", status_code=303)
+        redirect = token_redirect("/compare", token)
+        if redirect:
+            return redirect
+        return FileResponse(STATIC_DIR / "compare.html")
+
     return application
 
 

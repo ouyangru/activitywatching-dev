@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#131a22">
+<title>行迹 · 多日对比</title>
+<link rel="stylesheet" href="/static/styles.css?v=20260909-1">
+<link rel="stylesheet" href="/static/design.css?v=20260909-1">
+</head>
+<body>
+<main class="shell">
+<header class="topbar">
+<a class="brand" href="/" aria-label="行迹首页">
+<span class="brand-mark" aria-hidden="true">
+<i>
+</i>
+<i>
+</i>
+<i>
+</i>
+</span>行迹</a>
+<nav class="topbar-nav">
+<a class="nav-link" href="/" data-day-link>总览</a>
+<a class="nav-link" href="/daily" data-day-link>日报</a>
+<a class="nav-link is-active" href="/compare" data-day-link>多日对比</a>
+</nav>
+<span class="timezone-note" id="timezoneNote">
+</span>
+</header>
+<section class="hero">
+<div>
+<p class="eyebrow">ACTIVITY / HISTORY</p>
+<h1>把几天放在一起，看看变化</h1>
+<p class="hero-meta">比较时间投入与一天的节奏，点击日期可回到当天的活动记录。</p>
+</div>
+</section>
+<form id="compareForm" class="comparison-controls">
+<label>开始日期<input id="compareStart" type="date" required>
+</label>
+<label>结束日期<input id="compareEnd" type="date" required>
+</label>
+<label>图表维度<select id="compareDimension">
+<option value="category">活动分类</option>
+<option value="purpose">活动目的</option>
+</select>
+</label>
+<button class="ghost-button" type="submit">更新对比</button>
+<button id="recentWeek" class="ghost-button" type="button">最近 7 天</button>
+</form>
+<p class="comparison-help">一次可比较 1—14 天；今天只统计已过去的时间，未记录与空闲单独展示，不把数据缺失当作效率下降。</p>
+<p class="page-state" id="compareState" role="status" aria-live="polite">
+</p>
+<div id="compareResults" hidden>
+<section class="panel comparison-panel">
+<div class="panel-heading">
+<h2>每天的时间投入</h2>
+<span class="timezone-note">按小时累计 · 点击柱条进入当天</span>
+</div>
+<div id="compareBars" class="compare-chart" role="img" aria-label="每天各分类时长的堆叠柱图">
+</div>
+<div class="distribution-tags" id="compareLegend">
+</div>
+</section>
+<section class="panel comparison-panel">
+<div class="panel-heading">
+<h2>每天的活动节奏</h2>
+<span class="timezone-note">同一条 00:00—24:00 时间轴</span>
+</div>
+<div id="compareLanes" class="compare-lanes" role="img" aria-label="按天对齐的全天活动时间轴">
+</div>
+<p class="comparison-help" id="compareDetail">点击时段进入当天总览，查看活动细节。</p>
+</section>
+<section class="panel comparison-panel">
+<div class="panel-heading">
+<h2>逐日明细</h2>
+<span class="timezone-note">保留完整数值，图表不可用时仍可查看</span>
+</div>
+<div class="table-wrap">
+<table class="comparison-table">
+<thead>
+<tr>
+<th>日期</th>
+<th>学习</th>
+<th>工作</th>
+<th>娱乐</th>
+<th>生活活动</th>
+<th>空闲 / 其他</th>
+<th>未记录</th>
+</tr>
+</thead>
+<tbody id="compareTable">
+</tbody>
+</table>
+</div>
+</section>
+</div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js">
+</script>
+<script src="/static/ui.js?v=20260909-1" defer>
+</script>
+<script src="/static/compare.js?v=20260909-1" defer>
+</script>
+</body>
+</html>

@@ -7,6 +7,7 @@
   <title>行迹 · 日报</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2310201e'/%3E%3Cpath d='M18 40V29M32 40V17M46 40V24' stroke='%2391e5b6' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/static/styles.css?v=20260906-3">
+  <link rel="stylesheet" href="/static/design.css?v=20260909-1">
 </head>
 <body>
   <div class="ambient ambient-one"></div>
@@ -18,50 +19,39 @@
         <span>行迹</span>
       </a>
       <nav class="topbar-nav">
-        <a class="nav-link" href="/">今日</a>
-        <a class="nav-link is-active" href="/daily">日报</a>
+        <a class="nav-link" href="/" data-day-link>总览</a>
+        <a class="nav-link is-active" href="/daily" data-day-link>日报</a>
+        <a class="nav-link" href="/compare" data-day-link>多日对比</a>
       </nav>
       <div class="live-pill"><span></span> <b id="connectionLabel">正在连接</b></div>
       <time id="dateLabel"></time>
     </header>
 
+    <p id="pageState" class="page-state" role="status" aria-live="polite"></p>
     <section class="hero hero-daily" aria-labelledby="dailyTitle">
       <div>
         <p class="eyebrow">DAILY REPORT · 日报</p>
-        <h1 id="dailyTitle">今日行为日报</h1>
+        <h1 id="dailyTitle">每日复盘</h1>
         <p id="dailySummary" class="hero-meta">正在生成日报摘要…</p>
       </div>
       <div class="date-nav">
         <button id="prevDay" class="ghost-button" type="button">前一天</button>
         <input id="dayInput" class="date-input" type="date" aria-label="选择日期">
         <button id="nextDay" class="ghost-button" type="button">后一天</button>
+        <button id="retryReport" class="ghost-button" type="button">刷新 / 重试</button>
         <button id="todayButton" class="ghost-button" type="button">回到今天</button>
       </div>
     </section>
 
+    <p id="timezoneNote" class="timezone-note"></p>
     <section class="stats" aria-label="当日概览">
-      <article><span>当日已过时长（含待确认）</span><strong id="trackedTime">0.0 小时</strong></article>
+      <article><span>当天覆盖时长（含未记录）</span><strong id="trackedTime">0.0 小时</strong></article>
       <article><span>主活动片段</span><strong id="combinedCount">0</strong></article>
       <article><span>最长专注</span><strong id="longestFocus">0 分钟</strong></article>
       <article><span>行为切换</span><strong id="switchCount">0 次</strong></article>
     </section>
 
-    <section class="panel offline-panel" aria-labelledby="offlineTitle">
-      <h2 id="offlineTitle">补充线下活动</h2>
-      <p>把空闲或无设备记录细分成实际活动。只覆盖这些时段，有设备活动的部分仍保留设备记录。跨夜活动可以选择不同的起止日期。</p>
-      <form id="offlineForm" class="offline-form">
-        <label>开始时间<input id="offlineStart" type="datetime-local" required></label>
-        <label>结束时间<input id="offlineEnd" type="datetime-local" required></label>
-        <label>活动<select id="offlineCategory"><option>睡眠</option><option>运动</option><option>出游</option><option>用餐</option><option>通勤</option><option>休息</option><option>家务</option></select></label>
-        <label>备注（可选，仅保存供查看）<input id="offlineNote" maxlength="280" placeholder="例如：晚饭后散步"></label>
-        <label class="remember-option"><input id="offlineRemember" type="checkbox">记住这个时段，同为工作日或周末时供 Agent 参考</label>
-        <button class="ghost-button" type="submit">保存活动</button>
-      </form>
-      <p id="offlineTimezone" class="ranking-empty"></p>
-      <p class="ranking-empty">习惯产生的判断会标为“推测”，人工确认优先。未提供习惯时，不会仅凭夜间无记录就认定睡眠。</p>
-      <div id="offlineRecords"></div>
-    </section>
-
+    <section class="panel reflection-panel"><div class="panel-heading"><h2>今天有哪些安排值得调整</h2><span class="muted">每条建议均可查看活动依据</span></div><div id="dailyReflection"></div></section>
     <div class="content-grid">
       <section class="panel timeline-panel" aria-labelledby="mainTitle">
         <div class="panel-heading">
@@ -124,10 +114,27 @@
         </section>
       </aside>
     </div>
+    <details class="panel offline-panel" id="offlineSection">
+      <summary id="offlineTitle">补充与管理人工修正</summary>
+      <p>把空闲或无设备记录细分成实际活动。只覆盖这些时段，有设备活动的部分仍保留设备记录。跨夜活动可以选择不同的起止日期。</p>
+      <form id="offlineForm" class="offline-form">
+        <label>开始时间<input id="offlineStart" type="datetime-local" required></label>
+        <label>结束时间<input id="offlineEnd" type="datetime-local" required></label>
+        <label>活动<select id="offlineCategory"><option>学习</option><option>工作</option><option>娱乐</option><option>空闲</option><option>其他</option><option>睡眠</option><option>运动</option><option>出游</option><option>用餐</option><option>通勤</option><option>休息</option><option>家务</option></select></label>
+        <label>备注（可选，仅保存供查看）<input id="offlineNote" maxlength="280" placeholder="例如：晚饭后散步"></label>
+        <label class="remember-option"><input id="offlineRemember" type="checkbox">记住这个时段，同为工作日或周末时供 Agent 参考</label>
+        <button class="ghost-button" type="submit">保存活动</button>
+      </form>
+      <p id="offlineTimezone" class="ranking-empty"></p>
+      <p class="ranking-empty">习惯产生的判断会标为“推测”，人工确认优先。未提供习惯时，不会仅凭夜间无记录就认定睡眠。</p>
+      <div id="offlineRecords"></div>
+    </details>
+
   </main>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js"></script>
-  <script src="/static/daily.js?v=20260906-3" defer></script>
+  <script src="/static/ui.js?v=20260909-1" defer></script>
+  <script src="/static/daily.js?v=20260909-1" defer></script>
 </body>
 </html>

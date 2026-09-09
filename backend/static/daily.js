@@ -1,37 +1,20 @@
-const CATEGORY_COLORS = {
-  "学习": "#6fe0a3",
-  "工作": "#6ba7ff",
-  "娱乐": "#f3b562",
-  "空闲": "#e07a72",
-  "其他": "#b88cff",
-  "无设备记录": "#4b5563",
-  "睡眠": "#8991dd", "运动": "#42cbb2", "出游": "#e6b760",
-  "用餐": "#df9972", "通勤": "#78adc8", "休息": "#b6a2c9", "家务": "#b0c979",
-};
+const CATEGORY_COLORS = ActivityUI.colors;
 const FALLBACK_COLORS = ["#6fe0a3", "#6ba7ff", "#f3b562", "#e07a72", "#b88cff", "#7fd4d4", "#d98fc0"];
 // 用本地时区生成 YYYY-MM-DD；toISOString() 是 UTC，凌晨时段会错到昨天
 function localDateKey(date = new Date()) {
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${date.getFullYear()}-${month}-${day}`;
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 }
+
 let dailyChart = null;
 let currentDimension = "category";
-let currentDay = localDateKey();
+let currentDay = "";
+let reportGeneration = 0;
+let purposeSummary = [];
 let lastReport = null;
 
-function formatClock(iso) {
-  return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
-}
+function formatClock(iso) { return ActivityUI.clock(iso); }
 
-function formatDuration(seconds) {
-  if (!seconds) return "0min";
-  if (seconds < 60) return `${seconds}秒`;
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.round((seconds % 3600) / 60);
-  if (hours > 0) return `${hours}h${minutes > 0 ? " " + minutes + "min" : ""}`;
-  return `${minutes}min`;
-}
+function formatDuration(seconds) { return ActivityUI.duration(seconds); }
 
 function formatHours(seconds) {
   return formatDuration(seconds);
@@ -110,7 +93,7 @@ function renderMainTimeline(segments) {
       ? `<span class="overlap-badge" title="该时段多设备重叠，仅主活动计入时长">重叠 ${formatDuration(segment.overlap_seconds)}</span>`
       : "";
     return `
-      <article class="timeline-item" style="--category-color:${color}">
+      <article class="timeline-item" data-category="${escapeHtml(segment.category)}" data-purpose="${escapeHtml(segment.purpose || segment.category)}" data-start="${escapeHtml(segment.start_time)}" style="--category-color:${color}">
         <time class="timeline-time">${formatClock(segment.start_time_local)}</time>
         <span class="timeline-node" aria-hidden="true"></span>
         <div class="timeline-card">
@@ -127,13 +110,18 @@ function renderMainTimeline(segments) {
           <div class="timeline-details">
             <span>${formatClock(segment.start_time_local)}—${formatClock(segment.end_time_local)}</span>
             <span>${formatDuration(segment.duration_seconds)}</span>
-            <button class="ghost-button" data-fill-start="${escapeHtml(segment.start_time)}" data-fill-end="${escapeHtml(segment.end_time)}" data-fill-category="${escapeHtml(segment.category)}">补充 / 修正时段</button>
+            ${["空闲", "无设备记录"].includes(segment.category) || segment.offline_annotation_id ? `<button class="ghost-button" data-fill-start="${escapeHtml(segment.start_time)}" data-fill-end="${escapeHtml(segment.end_time)}" data-fill-category="${escapeHtml(segment.category)}">补充 / 修正时段</button>` : `<a class="nav-link" href="/?day=${currentDay}&view=detail">到总览修正分类</a>`}
             ${segment.classification?.inferred ? `<button class="ghost-button" data-revoke="${escapeHtml(segment.classification.digest)}">撤销推测</button>` : ''}
           </div>
         </div>
       </article>`;
   }).join("");
   target.querySelectorAll('[data-fill-start]').forEach(button => button.addEventListener('click', () => {
+    const segment = segments.find(item => item.start_time === button.dataset.fillStart && item.end_time === button.dataset.fillEnd);
+    if (segment && (["空闲", "无设备记录"].includes(segment.category) || segment.offline_annotation_id)) {
+      ActivityUI.correctInterval(segment, loadReport); return;
+    }
+    document.getElementById('offlineSection').open = true;
     document.getElementById('offlineStart').value = localInputValue(button.dataset.fillStart);
     document.getElementById('offlineEnd').value = localInputValue(button.dataset.fillEnd);
     if ([...document.getElementById('offlineCategory').options].some(item => item.value === button.dataset.fillCategory)) {
@@ -167,8 +155,9 @@ function renderOfflineRecords(report) {
   }
   const target = document.getElementById('offlineRecords');
   target.innerHTML = (report.offline_annotations || []).map(item => `<div class="offline-record">
-    <span>${escapeHtml(localInputValue(item.start_time).replace('T', ' '))} — ${escapeHtml(localInputValue(item.end_time).replace('T', ' '))} · ${escapeHtml(item.category)} ${escapeHtml(item.note)}</span>
+    <span>${escapeHtml(localInputValue(item.start_time).replace('T', ' '))} — ${escapeHtml(localInputValue(item.end_time).replace('T', ' '))} · ${escapeHtml(item.category)} ${escapeHtml(item.note)}</span><button type="button" class="ghost-button" data-edit-offline="${item.id}">补充覆盖</button>
     <button class="ghost-button" data-delete-offline="${item.id}">删除记录及关联习惯</button></div>`).join('');
+  target.querySelectorAll('[data-edit-offline]').forEach(button => button.onclick = () => ActivityUI.correctInterval(report.offline_annotations.find(item => String(item.id) === button.dataset.editOffline), loadReport));
   target.querySelectorAll('[data-delete-offline]').forEach(button => button.addEventListener('click', async () => {
     try {
       const response = await fetch(`/api/v1/offline-activities/${button.dataset.deleteOffline}`, {method: 'DELETE'});
@@ -199,42 +188,16 @@ document.getElementById('offlineForm').addEventListener('submit', async event =>
 
 function renderDistribution() {
   if (!lastReport) return;
-  const summary = lastReport.summary || [];
-  const items = currentDimension === "category"
-    ? summary
-    : (lastReport.insights?.purposes || []).map((item) => ({
-        category: item.purpose,
-        seconds: item.seconds,
-        percent: lastReport.total_seconds ? Math.round(item.seconds * 1000 / lastReport.total_seconds) / 10 : 0,
-      }));
-  const visible = items.filter((item) => item.seconds > 0);
-  const colorFor = (name, index) => CATEGORY_COLORS[name] || FALLBACK_COLORS[index % FALLBACK_COLORS.length];
-
-  document.getElementById("dailyLegend").innerHTML = items.map((item, index) => `
-    <div class="legend-row">
-      <span class="legend-dot" style="background:${colorFor(item.category, index)}"></span>
-      <span>${escapeHtml(item.category)}</span><b>${item.percent}%</b>
-      <span class="fallback-bar"><i style="width:${item.percent}%;background:${colorFor(item.category, index)}"></i></span>
-    </div>`).join("");
-
-  if (!window.echarts) return;
-  dailyChart ||= echarts.init(document.getElementById("dailyChart"));
-  dailyChart.setOption({
-    backgroundColor: "transparent",
-    tooltip: { trigger: "item", formatter: "{b}<br>{c} 秒 · {d}%" },
-    series: [{
-      type: "pie",
-      radius: ["64%", "84%"],
-      center: ["50%", "48%"],
-      itemStyle: { borderColor: "#10201e", borderWidth: 4, borderRadius: 7 },
-      label: { show: false },
-      data: visible.length ? visible.map((item, index) => ({
-        name: item.category,
-        value: item.seconds,
-        itemStyle: { color: colorFor(item.category, index) },
-      })) : [{ name: "暂无数据", value: 1, itemStyle: { color: "#263430" } }],
-    }],
-  }, true);
+  const items = (currentDimension === 'category' ? lastReport.summary : purposeSummary).filter(x=>x.seconds>0);
+  const select = category => {
+    document.querySelectorAll('#mainTimeline .timeline-item').forEach(el => el.classList.toggle('is-dimmed', el.dataset[currentDimension === 'category' ? 'category' : 'purpose'] !== category));
+    const first = [...document.querySelectorAll('#mainTimeline .timeline-item')].find(el=>!el.classList.contains('is-dimmed'));
+    first?.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});
+  };
+  dailyChart = ActivityUI.pie('dailyChart', items, select);
+  document.getElementById('dailyLegend').innerHTML = items.map(x=>`<button type="button" class="legend-select" data-category="${escapeHtml(x.category)}"><span><i class="legend-dot" style="background:${CATEGORY_COLORS[x.category]||CATEGORY_COLORS.其他}"></i>${escapeHtml(x.category)}</span><span>${formatDuration(x.seconds)} · ${x.percent}%</span></button>`).join('') + '<button type="button" class="ghost-button" id="clearDailyFilter">显示全部活动</button>';
+  document.querySelectorAll('.legend-select').forEach(b=>b.onclick=()=>select(b.dataset.category));
+  document.getElementById('clearDailyFilter').onclick=()=>document.querySelectorAll('#mainTimeline .timeline-item').forEach(el=>el.classList.remove('is-dimmed'));
 }
 
 function renderRankings(report) {
@@ -265,7 +228,7 @@ function renderRankings(report) {
     ? sources.map(([source, count]) => `
       <li class="ranking-row">
         <span class="ranking-name" title="${escapeHtml(source)}">${escapeHtml(source)}</span>
-        <span class="ranking-bar"><i style="width:${Math.min(100, count * 20)}%"></i></span>
+        <span class="ranking-bar"><i style="width:${Math.round(count * 100 / Math.max(1, ...sources.map(item=>item[1])))}%"></i></span>
         <b class="ranking-value">${count} 次</b>
       </li>`).join("")
     : `<li class="ranking-empty">当天没有记录到短暂打断</li>`;
@@ -289,20 +252,28 @@ function renderMemories(report) {
   list.innerHTML = memories.map((memory) => `
     <li class="ranking-row" title="${escapeHtml(memory.content)}">
       <span class="ranking-name">${escapeHtml(memory.scope)}</span>
-      <span class="reason-chip">${MEMORY_SOURCE_LABELS[memory.source] || memory.source}${memory.hit_count ? ` · ${memory.hit_count}次` : ""}</span>
+      <span class="reason-chip">${escapeHtml(MEMORY_SOURCE_LABELS[memory.source] || memory.source)}${memory.hit_count ? ` · ${memory.hit_count}次` : ""}</span>
       <b class="ranking-value">${escapeHtml(memory.content)}</b>
     </li>`).join("");
 }
 
 async function loadReport() {
+  const generation = ++reportGeneration;
+  document.getElementById('pageState').textContent = `正在加载 ${currentDay} 的日报…`;
+  document.getElementById('pageState').classList.remove('is-error');
   const input = document.getElementById("dayInput");
   input.value = currentDay;
   document.getElementById("dateLabel").textContent =
     new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "long" }).format(new Date(`${currentDay}T12:00:00`));
   try {
-    const response = await fetch(`/api/v1/daily/report?day=${currentDay}`);
-    if (!response.ok) throw new Error("后端暂时不可用");
-    const report = await response.json();
+    const [report, purposes] = await Promise.all([
+      ActivityUI.json(`/api/v1/daily/report?day=${currentDay}`),
+      ActivityUI.json(`/api/v1/summary/today?day=${currentDay}&dimension=purpose`),
+    ]);
+    if (generation !== reportGeneration) return;
+    ActivityUI.setTimezone(report.timezone);
+    purposeSummary = purposes.categories;
+    document.querySelectorAll('.stats,.content-grid,.reflection-panel').forEach(el=>el.hidden=false);
     lastReport = report;
     renderHeadline(report);
     renderStats(report);
@@ -310,22 +281,30 @@ async function loadReport() {
     renderDistribution();
     renderRankings(report);
     renderMemories(report);
+    document.getElementById('offlineSection').hidden=false;
     renderOfflineRecords(report);
+    ActivityUI.reflection('dailyReflection', report.combined_segments || [], report.insights, segment=>{
+      document.querySelectorAll('#mainTimeline .timeline-item').forEach(el=>el.classList.remove('is-dimmed','is-linked'));
+      const el=[...document.querySelectorAll('#mainTimeline .timeline-item')].find(el=>el.dataset.start===segment.start_time);
+      if(el){el.classList.add('is-linked');el.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});ActivityUI.flash(el);}
+    });
+    document.getElementById('pageState').textContent = `${currentDay} · 已更新日报与人工修正`;
+    ActivityUI.syncDay(currentDay);
     document.querySelector(".live-pill").classList.remove("offline");
     document.getElementById("connectionLabel").textContent = "服务已连接";
   } catch (error) {
+    if (generation !== reportGeneration) return;
+    document.getElementById('pageState').textContent = `${currentDay} 日报加载失败，请点击“重试”。`;
+    document.getElementById('pageState').classList.add('is-error');
+    document.querySelectorAll('.stats,.content-grid,.reflection-panel').forEach(el=>el.hidden=true);
+    document.getElementById('offlineSection').hidden=true;
+    document.getElementById('dailySummary').textContent='日报暂不可用，请刷新重试。';
     document.querySelector(".live-pill").classList.add("offline");
     document.getElementById("connectionLabel").textContent = "服务未连接";
     showToast(error.message || "日报加载失败");
   }
 }
 
-document.getElementById("prevDay").addEventListener("click", () => { currentDay = shiftDay(currentDay, -1); loadReport(); });
-document.getElementById("nextDay").addEventListener("click", () => { currentDay = shiftDay(currentDay, 1); loadReport(); });
-document.getElementById("todayButton").addEventListener("click", () => { currentDay = localDateKey(); loadReport(); });
-document.getElementById("dayInput").addEventListener("change", (event) => {
-  if (event.target.value) { currentDay = event.target.value; loadReport(); }
-});
 document.querySelectorAll("[data-daily-dimension]").forEach((button) => {
   button.addEventListener("click", () => {
     currentDimension = button.dataset.dailyDimension;
@@ -338,4 +317,9 @@ document.querySelectorAll("[data-daily-dimension]").forEach((button) => {
   });
 });
 window.addEventListener("resize", () => dailyChart?.resize());
-loadReport();
+ActivityUI.ready.then(()=>{
+  currentDay=ActivityUI.initialDay();
+  ActivityUI.bindDate({input:'dayInput',prev:'prevDay',next:'nextDay',today:'todayButton',day:currentDay,onChange:day=>{currentDay=day;lastReport=null;document.getElementById('dailySummary').textContent='正在加载所选日期…';document.querySelectorAll('.stats,.content-grid,.reflection-panel').forEach(el=>el.hidden=true);document.getElementById('offlineSection').open=false;document.getElementById('offlineSection').hidden=true;loadReport();}});
+  document.getElementById('retryReport').onclick=loadReport;
+  loadReport();
+});
