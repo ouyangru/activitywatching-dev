@@ -201,11 +201,6 @@ h1 { margin: 0; font-size: clamp(30px, 4.2vw, 52px); line-height: 1.13; letter-s
 .toast { position: fixed; right: 26px; bottom: 26px; transform: translateY(18px); opacity: 0; pointer-events: none; background: #e9f6ee; color: #10231b; padding: 11px 16px; border-radius: 10px; box-shadow: var(--shadow); font-size: 13px; transition: .25s ease; }
 .toast.visible { transform: translateY(0); opacity: 1; }
 
-@media (max-width: 1150px) {
-  .content-grid.trio { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .content-grid.trio .timeline-panel { grid-column: 1 / -1; }
-}
-
 @media (max-width: 850px) {
   .shell { width: min(100% - 24px, 680px); }
   .content-grid { grid-template-columns: 1fr; }

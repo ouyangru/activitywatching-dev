@@ -184,6 +184,10 @@ button,a,input,select {
   min-height:420px;
   padding:24px
 }
+.content-grid.trio .insights-panel {
+  height:650px;
+  min-height:420px
+}
 .timeline {
   scroll-behavior:smooth
 }
@@ -231,19 +235,21 @@ button,a,input,select {
   white-space:normal
 }
 .focus-cell {
-  border-radius:5px;
+  border-radius:6px;
   background:#17212b;
-  padding:15px
+  padding:15px 18px
 }
 .focus-cell span {
   font-size:12px
 }
 .focus-cell strong {
-  font-size:21px;
+  font-size:22px;
   font-weight:500
 }
 .ranking-row {
-  grid-template-columns:minmax(0,1fr) 85px auto
+  grid-template-columns:minmax(0,1fr) 85px auto;
+  min-height:34px;
+  align-items:center
 }
 .ranking-name {
   font-size:13px
@@ -263,7 +269,17 @@ button,a,input,select {
   font-size:12px;
   letter-spacing:0;
   color:#b7c9d8;
-  font-weight:500
+  font-weight:500;
+  margin:16px 0 10px
+}
+.content-grid.trio .insights-panel .ranking-list {
+  flex:1 1 auto;
+  min-height:0;
+  overflow-y:auto;
+  gap:8px;
+  scrollbar-width:thin;
+  scrollbar-color:#42586a transparent;
+  padding-right:6px
 }
 .device-pill,.device-pill.live {
   background:#21323d;
@@ -627,12 +643,6 @@ button,a,input,select {
   color:#abc9d4
 }
 @media(max-width:1050px) {
-  .content-grid.trio {
-    grid-template-columns:1fr
-  }
-  .content-grid.trio .timeline-panel {
-    grid-column:auto
-  }
   .shell {
     width:calc(100% - 32px)
   }
@@ -647,6 +657,18 @@ button,a,input,select {
   }
   .date-nav {
     margin-left:0
+  }
+}
+@media(max-width:850px) {
+  .content-grid.trio {
+    grid-template-columns:1fr
+  }
+  .content-grid.trio .timeline-panel {
+    grid-column:auto
+  }
+  .content-grid.trio .insights-panel {
+    height:auto;
+    min-height:0
   }
 }
 @media(max-width:700px) {

@@ -211,6 +211,17 @@ function renderInsights(insights) {
         <b class="ranking-value">${escapeHtml(app.duration_text)}</b>
       </li>`).join("")
     : `<li class="ranking-empty">暂无应用数据</li>`;
+
+  const behaviors = insights.behaviors || [];
+  const behaviorTotal = behaviors.reduce((sum, item) => sum + item.seconds, 0);
+  document.getElementById("behaviorRanking").innerHTML = behaviors.length
+    ? behaviors.map((behavior) => `
+      <li class="ranking-row">
+        <span class="ranking-name">${escapeHtml(behavior.behavior)}</span>
+        <span class="ranking-bar"><i style="width:${behaviorTotal ? Math.round(behavior.seconds * 100 / behaviorTotal) : 0}%"></i></span>
+        <b class="ranking-value">${escapeHtml(behavior.duration_text)}</b>
+      </li>`).join("")
+    : `<li class="ranking-empty">暂无行为数据</li>`;
 }
 
 async function loadDevices() {
