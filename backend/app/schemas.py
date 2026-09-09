@@ -77,7 +77,7 @@ class AgentMemoryRequest(BaseModel):
 class OfflineActivityRequest(BaseModel):
     start_time: datetime
     end_time: datetime
-    category: Literal["睡眠", "运动", "出游", "用餐", "通勤", "休息", "家务"]
+    category: Literal["学习", "工作", "娱乐", "空闲", "其他", "睡眠", "运动", "出游", "用餐", "通勤", "休息", "家务"]
     note: str = Field(default="", max_length=280)
     remember: bool = False
 

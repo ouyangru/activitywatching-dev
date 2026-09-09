@@ -247,7 +247,7 @@ def build_insights(rows: list[Any], local_timezone: ZoneInfo) -> dict[str, Any]:
         purpose = row.get("purpose") or "其他"
         category = row["category"]
 
-        if category not in OFFLINE_CATEGORIES and platform != 'none':
+        if category not in OFFLINE_CATEGORIES and platform != 'none' and not row.get("offline_annotation_id"):
             app = apps.setdefault(
                 (process, platform),
                 {"process": process, "platform": platform, "seconds": 0, "segment_count": 0, "category": category},

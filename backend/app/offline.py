@@ -8,7 +8,7 @@ import hashlib
 import json
 from zoneinfo import ZoneInfo
 
-from .activities import NO_DEVICE_CATEGORY
+from .activities import NO_DEVICE_CATEGORY, OFFLINE_CATEGORIES
 from .database import Database, utc_iso
 
 
@@ -106,7 +106,8 @@ def apply_offline(database: Database, rows: list, timezone: ZoneInfo) -> list[di
             confirmed = [item for item in relevant if parse(item["start_time"]) <= left and parse(item["end_time"]) >= right]
             if confirmed:
                 annotation = confirmed[-1]
-                piece.update(category=annotation["category"], behavior=annotation["category"], purpose="生活事务",
+                purpose = "生活事务" if annotation["category"] in OFFLINE_CATEGORIES else annotation["category"]
+                piece.update(category=annotation["category"], behavior=annotation["category"], purpose=purpose,
                              description=f"人工确认：{annotation['category']}", manual_override=1,
                              offline_annotation_id=annotation["id"], classification={"source": "manual", "confidence": 1.0})
             result.append(piece)

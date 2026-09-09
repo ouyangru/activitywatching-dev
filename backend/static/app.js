@@ -1,24 +1,20 @@
-const CATEGORY_COLORS = {
-  "学习": "#6fe0a3",
-  "工作": "#6ba7ff",
-  "娱乐": "#f3b562",
-  "空闲": "#e07a72",
-  "其他": "#b88cff",
-  "无设备记录": "#4b5563",
-  "睡眠": "#8991dd", "运动": "#42cbb2", "出游": "#e6b760",
-  "用餐": "#df9972", "通勤": "#78adc8", "休息": "#b6a2c9", "家务": "#b0c979",
-};
-const CATEGORIES = Object.keys(CATEGORY_COLORS);
+const CATEGORY_COLORS = ActivityUI.colors;
+const CATEGORIES = Object.keys(CATEGORY_COLORS).filter(x => x !== "生活事务");
 const PURPOSE_FALLBACK_COLORS = ["#6fe0a3", "#6ba7ff", "#f3b562", "#e07a72", "#b88cff", "#7fd4d4", "#d98fc0"];
 const EDITABLE_CATEGORIES = CATEGORIES.filter((category) => category !== "无设备记录");
-const OFFLINE_CATEGORIES = ["空闲", "睡眠", "运动", "出游", "用餐", "通勤", "休息", "家务"];
-const TIMELINE_MERGE_GAP_MS = 5 * 60 * 1000;
+const OFFLINE_CATEGORIES = ActivityUI.editable;
+const TIMELINE_MERGE_GAP_MS = 0;
 const DEVICE_DISPLAY_TIMEOUT_MS = 48 * 60 * 60 * 1000;
 const distributionCharts = [];
 let dashboardGeneration = 0;
 let selectedDevice = "";
 let timelineOrder = "desc";
-let timelineView = "detail";
+let timelineView = new URLSearchParams(location.search).get("view") === "detail" ? "detail" : "combined";
+let selectedDay = "";
+let selectedCategory = "";
+let latestSegments = [];
+let latestScopes = [];
+let lastDistributionTopology = "";
 let latestInsights = null;
 let pendingCombinedCorrection = null;
 
@@ -28,23 +24,20 @@ function platformLabel(platform) {
   return "无设备";
 }
 
+function withDay(path) {
+  const url = new URL(path, location.origin);
+  url.searchParams.set('day', selectedDay);
+  return url.pathname + url.search;
+}
 function withDevice(path) {
-  if (!selectedDevice) return path;
-  const separator = path.includes("?") ? "&" : "?";
-  return `${path}${separator}device_id=${encodeURIComponent(selectedDevice)}`;
+  const url = new URL(withDay(path), location.origin);
+  if (selectedDevice) url.searchParams.set('device_id', selectedDevice);
+  return url.pathname + url.search;
 }
 
-function formatClock(iso) {
-  return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
-}
+function formatClock(iso) { return ActivityUI.clock(iso); }
 
-function formatDuration(seconds) {
-  if (seconds < 60) return `${seconds}秒`;
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.round((seconds % 3600) / 60);
-  if (hours > 0) return `${hours}h${minutes > 0 ? " " + minutes + "min" : ""}`;
-  return `${minutes}min`;
-}
+function formatDuration(seconds) { return ActivityUI.duration(seconds); }
 
 function formatTrackedHours(seconds) {
   const hours = Math.floor(seconds / 3600);
@@ -85,8 +78,8 @@ function renderTimeline(segments) {
 
   target.innerHTML = orderedSegments.map((segment) => {
     const color = CATEGORY_COLORS[segment.category] || CATEGORY_COLORS["其他"];
-    const isOfflineCorrection = segment.category === "空闲" || segment.category === "无设备记录";
-    const supportsAgentMemory = isOfflineCorrection || segment.category === "其他";
+    const isOfflineCorrection = ["空闲", "无设备记录"].includes(segment.category) || Boolean(segment.offline_annotation_id);
+    const supportsAgentMemory = !isOfflineCorrection && segment.category === "其他";
     const correctionCategories = isOfflineCorrection ? OFFLINE_CATEGORIES : EDITABLE_CATEGORIES;
     const options = `${segment.category === "无设备记录" ? '<option value="" selected disabled>修改状态…</option>' : ""}` + correctionCategories.map((category) =>
       `<option value="${category}" ${category === segment.category ? "selected" : ""}>${category}</option>`
@@ -96,7 +89,7 @@ function renderTimeline(segments) {
     const purposeTag = segment.purpose && segment.purpose !== segment.category
       ? `<span class="purpose-badge">目的：${escapeHtml(segment.purpose)}</span>` : "";
     return `
-      <article class="timeline-item" style="--category-color:${color}">
+      <article class="timeline-item" data-category="${escapeHtml(segment.category)}" data-purpose="${escapeHtml(segment.purpose || segment.category)}" data-start="${escapeHtml(segment.start_time)}" style="--category-color:${color}">
         <time class="timeline-time">${formatClock(segment.start_time_local)}</time>
         <span class="timeline-node" aria-hidden="true"></span>
         <div class="timeline-card">
@@ -110,12 +103,12 @@ function renderTimeline(segments) {
           <div class="timeline-details">
             <span>${formatClock(segment.start_time_local)}—${formatClock(segment.end_time_local)}</span>
             <span>${formatDuration(segment.duration_seconds)}${interruption}${manual}</span>
-            ${segment.id === null && !isOfflineCorrection ? "" : `<select class="edit-category"
+            ${isOfflineCorrection ? `<button type="button" class="ghost-button" data-interval-start="${escapeHtml(segment.start_time)}" data-interval-end="${escapeHtml(segment.end_time)}" data-interval-category="${escapeHtml(segment.category)}">修正时段</button>` : segment.id === null ? "" : `<select class="edit-category"
               data-segment-id="${segment.id ?? ""}" data-source-category="${escapeHtml(segment.category)}"
               data-start-time="${escapeHtml(segment.start_time)}" data-end-time="${escapeHtml(segment.end_time)}"
               aria-label="修改 ${escapeHtml(segment.behavior)} 的分类">${options}</select>`}
             ${supportsAgentMemory ? `<label class="remember-correction" title="普通活动按应用记忆；空闲活动按相似时段记忆">
-              <input type="checkbox" data-remember-for="${segment.id ?? `${escapeHtml(segment.start_time)}|${escapeHtml(segment.end_time)}`}" checked> 让 Agent 参考
+              <input type="checkbox" data-remember-for="${segment.id ?? `${escapeHtml(segment.start_time)}|${escapeHtml(segment.end_time)}`}"> 让 Agent 参考
             </label>` : ""}
           </div>
         </div>
@@ -157,7 +150,7 @@ function renderTimeline(segments) {
     });
     select.dataset.previous = select.value;
   });
-  target.scrollTop = 0;
+  bindIntervalButtons(target);
 }
 
 function renderCombinedTimeline(segments) {
@@ -176,7 +169,7 @@ function renderCombinedTimeline(segments) {
       ? `<span class="overlap-badge" title="该时段多设备重叠，仅主活动计入时长">重叠 ${formatDuration(segment.overlap_seconds)}</span>`
       : "";
     return `
-      <article class="timeline-item" style="--category-color:${color}">
+      <article class="timeline-item" data-category="${escapeHtml(segment.category)}" data-purpose="${escapeHtml(segment.purpose || segment.category)}" data-start="${escapeHtml(segment.start_time)}" style="--category-color:${color}">
         <time class="timeline-time">${formatClock(segment.start_time_local)}</time>
         <span class="timeline-node" aria-hidden="true"></span>
         <div class="timeline-card">
@@ -191,11 +184,12 @@ function renderCombinedTimeline(segments) {
           <div class="timeline-details">
             <span>${formatClock(segment.start_time_local)}—${formatClock(segment.end_time_local)}</span>
             <span>${formatDuration(segment.duration_seconds)}</span>
+            ${["空闲", "无设备记录"].includes(segment.category) || segment.offline_annotation_id ? `<button type="button" class="ghost-button" data-interval-start="${escapeHtml(segment.start_time)}" data-interval-end="${escapeHtml(segment.end_time)}" data-interval-category="${escapeHtml(segment.category)}">修正时段</button>` : ''}
           </div>
         </div>
       </article>`;
   }).join("");
-  target.scrollTop = 0;
+  bindIntervalButtons(target);
 }
 
 function renderInsights(insights) {
@@ -223,13 +217,11 @@ async function loadDevices() {
   const response = await fetch("/api/v1/devices");
   if (!response.ok) throw new Error("设备列表加载失败");
   const payload = await response.json();
-  const devices = payload.devices.filter((device) => isDeviceVisible(device));
+  const devices = payload.devices.filter((device) => selectedDay !== ActivityUI.today() || isDeviceVisible(device));
   const select = document.getElementById("deviceFilter");
   const current = selectedDevice;
   select.innerHTML = `<option value="">全部设备</option>` + devices.map((device) => {
-    const status = device.is_online
-      ? `<span class="device-status is-online" title="采集器在线"></span>`
-      : `<span class="device-status is-offline" title="离线或未心跳"></span>`;
+    const status = device.is_online ? "在线 · " : "离线 · ";
     return `<option value="${escapeHtml(device.device_id)}">${status}${platformLabel(device.platform)} · ${escapeHtml(device.device_id)}</option>`;
   }).join("");
   if ([...select.options].some((option) => option.value === current)) {
@@ -295,47 +287,10 @@ function renderDeviceStatusRow(devices) {
 }
 
 function renderChart(items, chartId, showPercent = false) {
-  const visible = items.filter((item) => item.seconds > 0);
-  const colorFor = (name) => CATEGORY_COLORS[name] || PURPOSE_FALLBACK_COLORS[visible.findIndex((item) => item.category === name) % PURPOSE_FALLBACK_COLORS.length] || "#b88cff";
-
-  if (!window.echarts) {
-    document.getElementById(chartId).innerHTML = `<div class="empty">图表库离线，暂时无法显示扇形图。</div>`;
-    return;
-  }
-  const chartInstance = echarts.init(document.getElementById(chartId));
-  distributionCharts.push(chartInstance);
-  chartInstance.setOption({
-    backgroundColor: "transparent",
-    tooltip: { trigger: "item", formatter: (params) => `${escapeHtml(params.name)}<br>${visible.length ? formatDuration(params.value) : "暂无数据"}${showPercent && visible.length ? ` · ${params.percent}%` : ""}` },
-    series: [{
-      type: "pie",
-      radius: ["64%", "84%"],
-      center: ["50%", "48%"],
-      avoidLabelOverlap: true,
-      itemStyle: { borderColor: "#10201e", borderWidth: 4, borderRadius: 7 },
-      label: {
-        show: true,
-        color: "#c9d5d0",
-        fontSize: 11,
-        lineHeight: 15,
-        formatter: showPercent ? "{b}\n{d}%" : "{b}",
-      },
-      labelLine: { length: 8, length2: 5, lineStyle: { color: "#52635d" } },
-      emphasis: { scaleSize: 5 },
-      data: visible.length ? visible.map((item) => ({
-        name: showPercent && item.category === "其他" ? "未判定" : item.category,
-        value: item.seconds,
-        itemStyle: { color: colorFor(item.category) },
-      })) : [{ name: "暂无数据", value: 1, itemStyle: { color: "#263430" } }],
-    }],
-    graphic: [{
-      type: "text", left: "center", top: "42%",
-      style: { text: visible.length ? "今日" : "等待数据", fill: "#91a49e", font: "12px Segoe UI" },
-    }, {
-      type: "text", left: "center", top: "51%",
-      style: { text: visible.length ? formatTrackedHours(items.reduce((sum, item) => sum + item.seconds, 0)) : "—", fill: "#eff7f2", font: "600 20px Segoe UI", textAlign: "center" },
-    }],
-  }, true);
+  ActivityUI.pie(chartId, items, category => selectCategory(category, showPercent));
+  const legend = document.getElementById(chartId + '-legend');
+  legend.innerHTML = items.filter(x => x.seconds > 0).map(x => `<button type="button" data-category="${escapeHtml(x.category)}"><span><i style="background:${CATEGORY_COLORS[x.category] || CATEGORY_COLORS.其他}"></i>${escapeHtml(x.category)}</span><span>${formatDuration(x.seconds)} · ${x.percent}%</span></button>`).join('');
+  legend.querySelectorAll('button').forEach(button => button.onclick = () => selectCategory(button.dataset.category, showPercent));
 }
 
 function compactDeviceLabel(scope) {
@@ -382,13 +337,14 @@ function mergeTimelineBlocks(segments) {
 
 function openCombinedCorrection(block, scopes) {
   const dialog = document.getElementById("combinedCorrectionDialog");
-  const categories = block.category === "空闲" ? OFFLINE_CATEGORIES : EDITABLE_CATEGORIES;
+  if (["空闲", "无设备记录"].includes(block.category)) { ActivityUI.correctInterval({start_time:block.start,end_time:block.end,category:block.category}, () => loadDashboard(false)); return; }
+  const categories = EDITABLE_CATEGORIES;
   document.getElementById("combinedCorrectionCategory").innerHTML = categories.map((category) =>
     `<option value="${category}" ${category === block.category ? "selected" : ""}>${category}</option>`
   ).join("");
   document.getElementById("combinedCorrectionSummary").textContent =
     `${formatClock(block.start)}—${formatClock(block.end)} · 当前为“${block.category}” · ${block.details.length} 个分项`;
-  document.getElementById("combinedCorrectionRemember").checked = true;
+  document.getElementById("combinedCorrectionRemember").checked = false;
   const sourceSegments = scopes.slice(1).flatMap((scope) => scope.timeline.segments).filter((segment) => {
     if (segment.id == null || segment.category !== block.category) return false;
     const start = new Date(segment.start_time).getTime();
@@ -442,8 +398,8 @@ function renderTimeComparison(scopes, chartId) {
     return;
   }
   const chart = document.getElementById(chartId);
-  const timeStackChartInstance = echarts.init(chart);
-  distributionCharts.push(timeStackChartInstance);
+  const timeStackChartInstance = echarts.getInstanceByDom(chart) || echarts.init(chart);
+  if (!distributionCharts.includes(timeStackChartInstance)) distributionCharts.push(timeStackChartInstance);
   const rows = scopes.map(compactDeviceLabel);
   const segmentParts = scopes.flatMap((scope, row) => mergeTimelineBlocks(scope.timeline.segments).flatMap((block) => {
       // Use server-local clock values so browser timezone does not shift the day.
@@ -454,7 +410,7 @@ function renderTimeComparison(scopes, chartId) {
       const end = endText.slice(0, 10) > startText.slice(0, 10) ? 24 : hour(endText);
       if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return [];
       return [{ category: block.category, row, start, end,
-        block: { ...block, rowLabel: compactDeviceLabel(scope), editable: row === 0 && ["其他", "空闲"].includes(block.category) } }];
+        block: { ...block, rowLabel: compactDeviceLabel(scope), editable: row === 0 && ["其他", "空闲", "无设备记录"].includes(block.category) } }];
     }));
   const categories = [...new Set(segmentParts.map((part) => part.category))];
   const seriesData = categories.map((category) => ({
@@ -481,7 +437,8 @@ function renderTimeComparison(scopes, chartId) {
     },
   }));
   timeStackChartInstance.setOption({
-    animation: false,
+    animation: !matchMedia("(prefers-reduced-motion: reduce)").matches,
+    animationDurationUpdate: 450,
     grid: { left: 76, right: 6, top: 4, bottom: 24 },
     tooltip: {
       trigger: "item",
@@ -499,13 +456,14 @@ function renderTimeComparison(scopes, chartId) {
       min: 0,
       max: 24,
       interval: 4,
-      axisLabel: { color: "#71847d", fontSize: 10, formatter: (value) => `${String(value).padStart(2, "0")}:00` },
+      axisLabel: { color: "#9eb0c0", fontSize: 12, formatter: (value) => `${String(value).padStart(2, "0")}:00` },
       axisLine: { lineStyle: { color: "rgba(202,230,218,.12)" } },
       splitLine: { lineStyle: { color: "rgba(202,230,218,.07)" } },
     },
-    yAxis: { type: "category", inverse: true, data: rows, axisLabel: { color: "#c9d5d0", fontSize: 10, width: 64, overflow: "truncate" }, axisLine: { show: false }, axisTick: { show: false }, splitLine: { show: false } },
+    yAxis: { type: "category", inverse: true, data: rows, axisLabel: { color: "#c9d5d0", fontSize: 12, width: 64, overflow: "truncate" }, axisLine: { show: false }, axisTick: { show: false }, splitLine: { show: false } },
     series: seriesData,
   }, true);
+  timeStackChartInstance.off("click");
   timeStackChartInstance.on("click", (params) => {
     const block = params.data?.[3];
     if (block?.editable) openCombinedCorrection(block, scopes);
@@ -517,7 +475,7 @@ async function fetchDistribution(devices) {
     const query = device.device_id ? `device_id=${encodeURIComponent(device.device_id)}` : "";
     const urls = [`/api/v1/summary/today?${query}`, `/api/v1/summary/today?dimension=purpose&${query}`,
       device.device_id ? `/api/v1/timeline/today?${query}` : "/api/v1/timeline/combined"];
-    const responses = await Promise.all(urls.map((url) => fetch(url)));
+    const responses = await Promise.all(urls.map((url) => fetch(withDay(url))));
     if (responses.some((response) => !response.ok)) throw new Error("时间分布加载失败");
     const [category, purpose, timeline] = await Promise.all(responses.map((response) => response.json()));
     return { ...device, label: device.label, category, purpose, timeline };
@@ -525,21 +483,24 @@ async function fetchDistribution(devices) {
 }
 
 function renderDistribution(scopes) {
-  distributionCharts.splice(0).forEach((chart) => chart.dispose());
+  const topology = scopes.map(x => x.device_id).join('|');
+  const rebuild = topology !== lastDistributionTopology || !document.getElementById('category-0');
+  if (rebuild) { ActivityUI.disposeWithin(document.getElementById('distributionScopes')); distributionCharts.splice(0).forEach(chart => chart.dispose()); }
+  lastDistributionTopology = topology;
   const scopeCards = (kind, chartClass, ariaLabel) => scopes.map((scope, index) => `
     <article class="distribution-scope-card">
       <h4>${escapeHtml(scope.label)}</h4>
-      <div id="${kind}-${index}" class="${chartClass}" role="img" aria-label="${escapeHtml(scope.label)}${ariaLabel}"></div>
+      <div id="${kind}-${index}" class="${chartClass}" role="img" aria-label="${escapeHtml(scope.label)}${ariaLabel}"></div><div class="chart-legend" id="${kind}-${index}-legend"></div>
     </article>`).join("");
   const scopeStyle = `--scope-count:${scopes.length}`;
   const activeCategories = [...new Set(scopes.flatMap((scope) => scope.category.categories
     .filter((item) => item.seconds > 0)
     .map((item) => item.category)))];
   document.getElementById("distributionTags").innerHTML = activeCategories.map((category) => `
-    <span><i style="background:${CATEGORY_COLORS[category] || "#b88cff"}"></i>${escapeHtml(category)}</span>`).join("");
-  document.getElementById("distributionScopes").innerHTML = `
+    <button type="button" data-category="${escapeHtml(category)}"><i style="background:${CATEGORY_COLORS[category] || "#b88cff"}"></i>${escapeHtml(category)}</button>`).join("");
+  if (rebuild) document.getElementById("distributionScopes").innerHTML = `
     <section class="distribution-band" aria-labelledby="categoryDistributionTitle">
-      <div class="distribution-band-heading"><h3 id="categoryDistributionTitle">分类构成</h3><p>看今天具体做了哪些活动</p></div>
+      <div class="distribution-band-heading"><h3 id="categoryDistributionTitle">分类构成</h3><p>看当天具体做了哪些活动</p></div>
       <div class="distribution-scope-grid" style="${scopeStyle}">${scopeCards("category", "distribution-pie", "分类扇形图")}</div>
     </section>
     <section class="distribution-band" aria-labelledby="timelineDistributionTitle">
@@ -550,6 +511,7 @@ function renderDistribution(scopes) {
       <div class="distribution-band-heading"><h3 id="purposeDistributionTitle">目的占比</h3><p>看时间投入方向；睡眠、运动、用餐等归入生活事务</p></div>
       <div class="distribution-scope-grid" style="${scopeStyle}">${scopeCards("purpose", "distribution-pie", "目的占比扇形图")}</div>
     </section>`;
+  document.querySelectorAll("#distributionTags button").forEach(button => button.onclick = () => selectCategory(button.dataset.category));
   scopes.forEach((scope, index) => {
     renderChart(scope.category.categories, `category-${index}`);
     renderChart(scope.purpose.categories, `purpose-${index}`, true);
@@ -560,6 +522,7 @@ function renderDistribution(scopes) {
 
 async function loadDashboard(showSuccess = false) {
   const generation = ++dashboardGeneration;
+  document.getElementById('pageState').textContent = `正在加载 ${selectedDay}…`;
   const button = document.getElementById("refreshButton");
   button.disabled = true;
   button.textContent = "刷新中…";
@@ -572,31 +535,37 @@ async function loadDashboard(showSuccess = false) {
       fetch(withDevice("/api/v1/insights/today")),
     ];
     if (timelineView === "combined") {
-      requests.push(fetch("/api/v1/timeline/combined"));
+      requests.push(fetch(withDay("/api/v1/timeline/combined")));
     }
     const [responses, distribution] = await Promise.all([Promise.all(requests), fetchDistribution(devices)]);
     if (generation !== dashboardGeneration) return;
     if (responses.some((response) => !response.ok)) throw new Error("后端暂时不可用");
     const [timeline, summary, insights, combined] = await Promise.all(responses.map((response) => response.json()));
+    document.querySelectorAll(".stats, .content-grid, .reflection-panel").forEach(el => el.hidden = false);
+    ActivityUI.setTimezone(timeline.timezone); ActivityUI.syncDay(selectedDay);
     const segments = timelineView === "combined" ? combined.segments : timeline.segments;
     window.timelineSegments = timeline.segments;
     latestInsights = insights;
 
+    latestSegments = segments; latestScopes = distribution;
     renderTimeline(segments);
+    applyCategoryFilter();
+    ActivityUI.reflection("overviewReflection", distribution[0]?.timeline.segments || segments, insights, revealSegment);
     renderDistribution(distribution);
     renderInsights(insights);
     document.getElementById("segmentCount").textContent = timeline.segments.length;
-    document.getElementById("trackedTime").textContent = formatTrackedHours(summary.total_seconds);
-    document.getElementById("trackedLabel").textContent = selectedDevice ? "该设备覆盖时长" : "设备与无设备时长";
+    document.getElementById("trackedTime").textContent = ActivityUI.duration(summary.total_seconds);
+    document.getElementById("trackedLabel").textContent = selectedDevice ? "该设备覆盖时长" : "当天覆盖时长（含未记录）";
+    document.getElementById("unknownTime").textContent = formatDuration(summary.categories.find(x => x.category === "无设备记录")?.seconds || 0);
     const focus = summary.categories.filter((item) => item.category === "学习" || item.category === "工作").reduce((sum, item) => sum + item.seconds, 0);
     document.getElementById("focusRate").textContent = summary.total_seconds ? `${Math.round(focus * 100 / summary.total_seconds)}%` : "0%";
 
-    const current = timeline.segments.at(-1);
-    if (current) {
-      const isFresh = Date.now() - new Date(current.end_time).getTime() < 120_000;
-      document.getElementById("currentTitle").textContent = `${isFresh ? "正在" : "最近"}${current.category}：${current.description}`;
-      document.getElementById("currentMeta").textContent = `${platformLabel(current.platform)} · ${current.behavior} · ${isFresh ? "从" : "记录于"} ${formatClock(current.start_time_local)} · ${current.process}`;
-    }
+    const current = [...timeline.segments].filter(x=>x.category !== '无设备记录').sort((a,b)=>new Date(a.end_time)-new Date(b.end_time)).at(-1);
+    const historical = selectedDay !== ActivityUI.today();
+    document.getElementById('currentTitle').textContent = historical ? `${selectedDay} · 活动回顾` : current ? `${Date.now()-new Date(current.end_time).getTime()<120000?'正在':'最近'}${current.category}：${current.description}` : '等待活动记录';
+    document.getElementById('currentMeta').textContent = historical ? `当天 ${timeline.segments.filter(x=>x.category !== '无设备记录').length} 段设备活动；可查看图表或修正时段。` : current ? `${platformLabel(current.platform)} · ${current.behavior} · ${formatClock(current.start_time_local)} 开始` : '启动采集器，或选择历史日期查看之前的活动。';
+    document.getElementById('pageState').textContent = `已加载 ${selectedDay} 的数据`;
+    document.getElementById('pageState').classList.remove('is-error');
     const livePill = document.querySelector(".live-pill");
     livePill.classList.remove("offline");
     document.getElementById("connectionLabel").textContent = "服务已连接";
@@ -605,6 +574,9 @@ async function loadDashboard(showSuccess = false) {
     if (generation !== dashboardGeneration) return;
     document.querySelector(".live-pill").classList.add("offline");
     document.getElementById("connectionLabel").textContent = "服务未连接";
+    document.getElementById("pageState").textContent = `${selectedDay} 加载失败；下方内容已隐藏，请刷新重试。`;
+    document.getElementById("pageState").classList.add("is-error");
+    document.querySelectorAll(".stats, .content-grid, .reflection-panel").forEach(el => el.hidden = true);
     showToast(error.message || "加载失败");
   } finally {
     if (generation === dashboardGeneration) {
@@ -615,9 +587,12 @@ async function loadDashboard(showSuccess = false) {
 }
 
 document.getElementById("todayLabel").textContent = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "long" }).format(new Date());
+document.getElementById("retryDashboard").addEventListener("click", () => loadDashboard(true));
 document.getElementById("refreshButton").addEventListener("click", () => loadDashboard(true));
 document.getElementById("deviceFilter").addEventListener("change", (event) => {
   selectedDevice = event.target.value;
+  if(selectedDevice)timelineView = "detail";
+  updateViewButtons();
   loadDashboard(false);
 });
 document.getElementById("timelineOrder").addEventListener("change", (event) => {
@@ -627,6 +602,7 @@ document.getElementById("timelineOrder").addEventListener("change", (event) => {
 document.querySelectorAll("[data-timeline-view]").forEach((button) => {
   button.addEventListener("click", () => {
     timelineView = button.dataset.timelineView;
+    if(timelineView === "combined")selectedDevice = "";
     document.querySelectorAll("[data-timeline-view]").forEach((item) => {
       const active = item.dataset.timelineView === timelineView;
       item.classList.toggle("is-active", active);
@@ -658,5 +634,32 @@ document.getElementById("cancelCombinedCorrection").addEventListener("click", ()
   document.getElementById("combinedCorrectionDialog").close();
 });
 
-loadDashboard();
-window.setInterval(() => loadDashboard(false), 30_000);
+function updateViewButtons() {
+  document.querySelectorAll('[data-timeline-view]').forEach(b=>{const active=b.dataset.timelineView===timelineView;b.classList.toggle('is-active',active);b.setAttribute('aria-selected',String(active));});
+}
+function bindIntervalButtons(target) {
+  target.querySelectorAll('[data-interval-start]').forEach(b=>b.onclick=()=>ActivityUI.correctInterval({start_time:b.dataset.intervalStart,end_time:b.dataset.intervalEnd,category:b.dataset.intervalCategory},()=>loadDashboard(false)));
+}
+let filterPurpose = false;
+function selectCategory(category, purpose = false) {
+  selectedCategory = selectedCategory === category && filterPurpose === purpose ? '' : category;
+  filterPurpose = purpose; applyCategoryFilter();
+  document.getElementById('timelineTitle').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});
+}
+function applyCategoryFilter() {
+  const status=document.getElementById('filterStatus');status.hidden=!selectedCategory;
+  status.innerHTML=`正在突出显示：${escapeHtml(selectedCategory)} <button class="ghost-button" type="button">清除</button>`;
+  status.querySelector('button').onclick=()=>{selectedCategory='';applyCategoryFilter();};
+  document.querySelectorAll('#timeline .timeline-item').forEach(el=>el.classList.toggle('is-dimmed',Boolean(selectedCategory)&&el.dataset[filterPurpose?'purpose':'category']!==selectedCategory));
+}
+async function revealSegment(segment) {
+  selectedCategory=''; timelineView='combined';selectedDevice='';updateViewButtons();await loadDashboard(false);
+  const el=[...document.querySelectorAll('#timeline .timeline-item')].find(el=>el.dataset.start===segment.start_time);
+  if(el){el.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});ActivityUI.flash(el);el.classList.add('is-linked');}
+}
+ActivityUI.ready.then(()=>{
+  selectedDay=ActivityUI.initialDay();
+  ActivityUI.bindDate({input:'overviewDay',prev:'overviewPrev',next:'overviewNext',today:'overviewToday',day:selectedDay,onChange:day=>{selectedDay=day;selectedCategory='';document.getElementById('currentTitle').textContent=`${day} · 正在加载`;document.getElementById('currentMeta').textContent='';document.querySelectorAll('.stats, .content-grid, .reflection-panel').forEach(el=>el.hidden=true);loadDashboard(false);}});
+  updateViewButtons();loadDashboard();
+});
+window.setInterval(()=>{if(selectedDay===ActivityUI.today()&&!document.hidden&&!document.querySelector('dialog[open]')&&!document.activeElement?.matches('select,input'))loadDashboard(false);},30000);
