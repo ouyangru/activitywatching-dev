@@ -19,9 +19,13 @@ window.ActivityUI = (() => {
   }
   function setTimezone(value) { if(value)timezone=value; }
   const ready = json('/api/v1/timeline/today').then(data=>{timezone=data.timezone || timezone;return data;}).catch(()=>null);
-  function initialDay() {const d=new URLSearchParams(location.search).get('day'); return validDay(d)&&d<=dayKey()?d:dayKey();}
+  function initialDay() {
+    const d=new URLSearchParams(location.search).get('day');
+    // Consume the navigation-only day param so a refresh always lands on today.
+    if(d!==null){const url=new URL(location.href);url.searchParams.delete('day');history.replaceState(null,'',url);}
+    return validDay(d)&&d<=dayKey()?d:dayKey();
+  }
   function syncDay(day) {
-    const url=new URL(location.href); url.searchParams.set('day',day); history.replaceState(null,'',url);
     document.querySelectorAll('[data-day-link]').forEach(a=>{const u=new URL(a.href);u.searchParams.set('day',day);a.href=u;});
     const note=document.getElementById('timezoneNote');if(note)note.textContent=`日期与图表使用 ${timezone} 时区`;
   }

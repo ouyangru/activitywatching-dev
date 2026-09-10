@@ -32,10 +32,10 @@
     state.classList.remove('is-error');state.textContent='正在读取历史活动…';document.getElementById('compareResults').hidden=true;
     const results=new Array(days.length);let cursor=0;
     const worker=async()=>{while(cursor<days.length){if(current!==generation)return;const index=cursor++,day=days[index];const [category,purpose,timeline]=await Promise.all([UI.json(`/api/v1/summary/today?day=${day}`),UI.json(`/api/v1/summary/today?day=${day}&dimension=purpose`),UI.json(`/api/v1/timeline/combined?day=${day}`)]);results[index]={day,category,purpose,timeline};}};
-    try{await Promise.all([worker(),worker()]);if(current!==generation)return;loaded=results;UI.setTimezone(loaded[0]?.timeline.timezone);document.getElementById('compareResults').hidden=false;render();UI.syncDay(end.value);const url=new URL(location.href);url.searchParams.set('start',start.value);url.searchParams.set('end',end.value);history.replaceState(null,'',url);state.textContent=`已加载 ${start.value} 至 ${end.value}，共 ${days.length} 天；点击图表或日期回看当天。`;}catch(e){if(current!==generation)return;error(`${e.message}；请点击“更新对比”重试，失败日期不会被当作零数据。`);}
+    try{await Promise.all([worker(),worker()]);if(current!==generation)return;loaded=results;UI.setTimezone(loaded[0]?.timeline.timezone);document.getElementById('compareResults').hidden=false;render();UI.syncDay(end.value);state.textContent=`已加载 ${start.value} 至 ${end.value}，共 ${days.length} 天；点击图表或日期回看当天。`;}catch(e){if(current!==generation)return;error(`${e.message}；请点击“更新对比”重试，失败日期不会被当作零数据。`);}
   }
   document.getElementById('compareForm').onsubmit=e=>{e.preventDefault();load();};
   dimension.onchange=()=>{if(loaded.length)render();};
   document.getElementById('recentWeek').onclick=()=>{end.value=UI.today();start.value=UI.shift(end.value,-6);load();};
-  UI.ready.then(()=>{const query=new URLSearchParams(location.search);end.max=start.max=UI.today();end.value=UI.validDay(query.get('end'))&&query.get('end')<=UI.today()?query.get('end'):UI.initialDay();start.value=UI.validDay(query.get('start'))?query.get('start'):UI.shift(end.value,-6);load();});
+  UI.ready.then(()=>{const query=new URLSearchParams(location.search);end.max=start.max=UI.today();end.value=UI.validDay(query.get('end'))&&query.get('end')<=UI.today()?query.get('end'):UI.initialDay();start.value=UI.validDay(query.get('start'))?query.get('start'):UI.shift(end.value,-6);const url=new URL(location.href);url.searchParams.delete('start');url.searchParams.delete('end');history.replaceState(null,'',url);load();});
 })();
