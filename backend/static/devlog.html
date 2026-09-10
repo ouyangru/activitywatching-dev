@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#131a22">
+<title>行迹 · 开发者视图</title>
+<link rel="stylesheet" href="/static/styles.css?v=20260909-2">
+<link rel="stylesheet" href="/static/design.css?v=20260909-4">
+<style>
+  .devlog-toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:14px 0; }
+  .devlog-kinds { display:flex; flex-wrap:wrap; gap:4px; padding:3px; border:1px solid var(--line); border-radius:10px; background:rgba(255,255,255,.025); }
+  .devlog-kinds button { border:0; background:transparent; color:var(--muted); font-size:13px; padding:6px 12px; border-radius:7px; cursor:pointer; transition:.2s ease; }
+  .devlog-kinds button:hover { color:var(--text); background:rgba(145,229,182,.08); }
+  .devlog-kinds button.is-active { color:var(--text); background:rgba(145,229,182,.14); }
+  .devlog-search { background:transparent; border:1px solid var(--line); border-radius:8px; color:var(--text); padding:7px 10px; font-size:13px; min-width:180px; }
+  .devlog-meta { font-size:12px; color:var(--muted); display:flex; flex-wrap:wrap; gap:14px; margin:0 0 10px; }
+  .devlog-meta b { color:var(--text); font-weight:600; }
+  .devlog-stream { display:flex; flex-direction:column; gap:8px; }
+  .devlog-entry { border:1px solid var(--line); border-radius:10px; background:rgba(255,255,255,.02); overflow:hidden; }
+  .devlog-entry-head { display:flex; align-items:center; gap:10px; padding:9px 12px; cursor:pointer; user-select:none; }
+  .devlog-entry-head:hover { background:rgba(145,229,182,.05); }
+  .devlog-entry-id { font-size:11px; color:var(--muted); min-width:52px; }
+  .devlog-time { font-size:12px; color:var(--muted); min-width:44px; font-variant-numeric:tabular-nums; }
+  .devlog-badge { font-size:11px; line-height:1; padding:4px 8px; border-radius:6px; white-space:nowrap; }
+  .devlog-badge.http { background:rgba(130,206,221,.16); color:#9fd4e0; }
+  .devlog-badge.ingest { background:rgba(146,163,217,.16); color:#aab8e8; }
+  .devlog-badge.agent_inject { background:rgba(214,173,121,.16); color:#e2c49a; }
+  .devlog-badge.agent_input { background:rgba(145,229,182,.14); color:#a5e8c6; }
+  .devlog-badge.agent_output { background:rgba(179,160,206,.18); color:#c9bce4; }
+  .devlog-summary { font-size:12.5px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }
+  .devlog-body { display:none; border-top:1px solid var(--line); padding:10px 12px; }
+  .devlog-entry.is-open .devlog-body { display:block; }
+  .devlog-body h4 { margin:2px 0 6px; font-size:11px; letter-spacing:.08em; color:var(--muted); font-weight:600; }
+  .devlog-body pre { margin:0 0 10px; padding:10px; background:rgba(0,0,0,.25); border-radius:8px; font-size:12px; line-height:1.55; white-space:pre-wrap; word-break:break-all; color:#cfe3d6; max-height:420px; overflow:auto; }
+  .devlog-body pre:last-child { margin-bottom:0; }
+  .devlog-note { font-size:12px; color:var(--muted); line-height:1.6; }
+  .devlog-empty { padding:30px 10px; text-align:center; color:var(--muted); font-size:13px; }
+  .devlog-toggle { display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--muted); cursor:pointer; }
+</style>
+</head>
+<body>
+<main class="shell">
+<header class="topbar">
+<a class="brand" href="/" aria-label="行迹首页">
+<span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>行迹</a>
+<nav class="topbar-nav">
+<a class="nav-link" href="/" data-day-link>总览</a>
+<a class="nav-link" href="/daily" data-day-link>日报</a>
+<a class="nav-link" href="/compare" data-day-link>多日对比</a>
+<a class="nav-link is-active" href="/devlog">开发</a>
+</nav>
+<span class="timezone-note" id="timezoneNote"></span>
+</header>
+<section class="hero">
+<div>
+<p class="eyebrow">DEV VIEW</p>
+<h1>开发者视图 · 调试日志流</h1>
+<p class="hero-meta">设备采集上传、API 请求、Agent 输入输出与记忆注入，按类别筛选；日志只存内存最近 200 条，重启即清空。</p>
+</div>
+</section>
+
+<p class="devlog-meta" id="devStatus" aria-live="polite"></p>
+
+<div class="devlog-toolbar">
+<div class="devlog-kinds" id="devKindBar" role="tablist" aria-label="日志类别">
+<button type="button" class="is-active" data-kind="">全部</button>
+<button type="button" data-kind="http">API 请求</button>
+<button type="button" data-kind="ingest">采集上传</button>
+<button type="button" data-kind="agent_inject">记忆注入</button>
+<button type="button" data-kind="agent_input">Agent 输入</button>
+<button type="button" data-kind="agent_output">Agent 输出</button>
+</div>
+<input class="devlog-search" id="devSearch" type="search" placeholder="搜索日志内容…" aria-label="搜索日志">
+<label class="devlog-toggle"><input type="checkbox" id="devAuto" checked>自动刷新（3 秒）</label>
+<button class="ghost-button" type="button" id="devRefresh">立即刷新</button>
+<button class="ghost-button" type="button" id="devClear">清空</button>
+</div>
+
+<p class="page-state" id="devState" role="status" aria-live="polite"></p>
+<section class="panel">
+<div class="panel-heading"><h2>日志流</h2><span class="timezone-note">新在前 · 点击条目展开全文</span></div>
+<div id="devStream" class="devlog-stream"><p class="devlog-empty">加载中…</p></div>
+</section>
+<p class="devlog-note" id="devNotice"></p>
+</main>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script src="/static/ui.js?v=20260910-1" defer></script>
+<script src="/static/devlog.js?v=20260910-1" defer></script>
+</body>
+</html>

@@ -38,6 +38,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
+from . import debuglog
 from .database import Database, utc_iso
 from .activities import CATEGORIES
 from .offline import apply_offline
@@ -121,6 +122,7 @@ def llm_cooldown_seconds(llm: LLMClient | None) -> float:
 def invoke_llm(llm: LLMClient, system: str, user: str, kind: str, model: str) -> str | None:
     request_id = uuid.uuid4().hex[:12]
     started = time.monotonic()
+    debuglog.record("agent_input", request_id=request_id, llm_kind=kind, model=model, system=system, user=user)
     LOG.info("[llm %s] start kind=%s model=%s", request_id, kind, model)
     if payload_logging_enabled():
         LOG.info("[llm %s] system:\n%s\nuser:\n%s", request_id, system, user)
@@ -130,10 +132,28 @@ def invoke_llm(llm: LLMClient, system: str, user: str, kind: str, model: str) ->
             raw = None
         if payload_logging_enabled():
             LOG.info("[llm %s] output:\n%s", request_id, raw)
-        LOG.info("[llm %s] finished status=%s elapsed=%.2fs", request_id, "ok" if raw else "empty", time.monotonic() - started)
+        elapsed_ms = (time.monotonic() - started) * 1000
+        debuglog.record(
+            "agent_output",
+            request_id=request_id,
+            llm_kind=kind,
+            status="ok" if raw else "empty",
+            elapsed_ms=round(elapsed_ms, 1),
+            output=raw,
+        )
+        LOG.info("[llm %s] finished status=%s elapsed=%.2fs", request_id, "ok" if raw else "empty", elapsed_ms / 1000)
         return raw
     except Exception as error:
-        LOG.warning("[llm %s] failed type=%s elapsed=%.2fs", request_id, type(error).__name__, time.monotonic() - started)
+        elapsed_ms = (time.monotonic() - started) * 1000
+        debuglog.record(
+            "agent_output",
+            request_id=request_id,
+            llm_kind=kind,
+            status="failed",
+            elapsed_ms=round(elapsed_ms, 1),
+            error=type(error).__name__,
+        )
+        LOG.warning("[llm %s] failed type=%s elapsed=%.2fs", request_id, type(error).__name__, elapsed_ms / 1000)
         return None
 
 
@@ -407,7 +427,7 @@ class AgentService:
             if self.cooldown_seconds() > 0:
                 break
             chunk = pending[chunk_start : chunk_start + MAX_DIGESTS_PER_CALL]
-            created += self._classify_chunk(chunk)
+            created += self._classify_chunk(chunk, day)
         return {"enabled": 1, "candidates": len(candidates), "new": created}
 
     def cooldown_seconds(self) -> float:
@@ -468,31 +488,48 @@ class AgentService:
                 }
             )
 
-    def _classify_chunk(self, chunk: list[dict[str, Any]]) -> int:
+    def _classify_chunk(self, chunk: list[dict[str, Any]], day: str) -> int:
         # 注入该应用相关的长期记忆（用户纠正 > 自动沉淀），并记录命中
         touched: list[int] = []
         project_facts = self.database.project_facts()
+        inject_items: list[dict[str, Any]] = []
         for item in chunk:
             known_facts: list[str] = []
+            app_memory_ids: list[int] = []
             for row in self.database.memory_for(item.get("process") or "")[:5]:
                 known_facts.append(sanitize_title(row["content"], 280))
+                app_memory_ids.append(row["id"])
                 touched.append(row["id"])
             # 项目背景：scope 出现在标题摘要或进程名里即视为相关（子串匹配）
             haystack = f"{item.get('title_summary') or ''} {item.get('process') or ''}".lower()
-            matched = 0
+            matched_scopes: list[str] = []
             for row in project_facts:
                 scope = (row["scope"] or "").strip().lower()
                 if not scope or scope not in haystack:
                     continue
                 known_facts.append(sanitize_title(f"[project_fact] {row['content']}", 280))
+                matched_scopes.append(scope)
                 touched.append(row["id"])
-                matched += 1
-                if matched >= PROJECT_FACTS_PER_ITEM:
+                if len(matched_scopes) >= PROJECT_FACTS_PER_ITEM:
                     break
             if known_facts:
                 item["known_facts"] = known_facts
+            if app_memory_ids or matched_scopes:
+                inject_items.append({
+                    "process": item.get("process") or "",
+                    "app_facts": len(app_memory_ids),
+                    "project_facts": matched_scopes,
+                })
         if touched:
             self.database.touch_memories(touched)
+        if inject_items:
+            summary = "；".join(
+                f"{item['process']} {item['app_facts']}条记忆"
+                + (f" + project_fact({','.join(item['project_facts'])})" if item["project_facts"] else "")
+                for item in inject_items
+            )
+            LOG.info("[agent.memory] %s 注入 %d/%d 条：%s", day, len(inject_items), len(chunk), summary)
+            debuglog.record("agent_inject", day=day, items=inject_items)
         user_prompt = json.dumps([{k: v for k, v in item.items() if not k.startswith('_')} for item in chunk], ensure_ascii=False)
         raw = invoke_llm(self.llm, CLASSIFY_SYSTEM_PROMPT, user_prompt, "classify", self.model_name) if self.llm else None
         if not raw:

@@ -31,7 +31,8 @@ agent_memory    ──▶ 长期记忆（注入两个 Agent 的 prompt）
 | `backend/app/agent.py` | **Agent ①**：单片段状态判定。`AgentService` 类：候选挑选、脱敏（`sanitize_title`）、digest 缓存、LLM 调用（OpenAI 兼容）、evidence 落库、高置信自动沉淀记忆、stale 节流清扫、分类时注入应用记忆 + 匹配的 project_fact、读取层覆盖（`apply_evidence`） |
 | `backend/app/summarizer.py` | **Agent ②**：日报叙述生成。`DailySummarizer` 类：按 `(day, 数据版本)` 缓存、后台线程重生成、prompt 注入长期记忆 + 近 7 天分类时长趋势 |
 | `backend/app/database.py` | 三张派生表的建表与读写方法（见下） |
-| `backend/app/main.py` | 接线：`ingest_batch` 投递后台 enrich；`timeline/summary/insights/status/daily` 读取层先过 `apply_evidence`；`combined_segments` 在合并**前**应用覆盖（这样跨设备时间线继承 Agent 语义）；Agent 管理端点 |
+| `backend/app/debuglog.py` | 开发者视图日志环（见下） |
+| `backend/app/main.py` | 接线：`ingest_batch` 投递后台 enrich；`timeline/summary/insights/status/daily` 读取层先过 `apply_evidence`；`combined_segments` 在合并**前**应用覆盖（这样跨设备时间线继承 Agent 语义）；Agent 管理端点；开发者视图端点与 `/devlog` 页面 |
 | `backend/app/schemas.py` | `SegmentCorrection`（含 `remember`/`memory_note`）、`AgentEnrichRequest`、`MemoryAddRequest` |
 | `tests/test_agent.py` | Agent 全量测试（25 个），含注入 FakeLLM 的 fixture 与环境隔离 fixture |
 
@@ -92,6 +93,16 @@ agent_memory    ──▶ 长期记忆（注入两个 Agent 的 prompt）
 | `POST /api/v1/agent/memory` | 手动添加：`{"kind", "scope", "content", "category", "confidence"}` |
 | `DELETE /api/v1/agent/memory/{id}` | 单条删除 |
 
+## 开发者视图（调试日志环）
+
+网页 `/devlog`（顶栏「开发」入口）按类别筛选查看五类日志：**API 请求**（method/path/status/耗时）、**采集上传**（设备、接受/重复、重建片段数）、**记忆注入**（哪个进程注入几条记忆 + 哪些 project_fact）、**Agent 输入**（完整 prompt 原文，含 known_facts）、**Agent 输出**（模型原始回复与耗时）。支持搜索、3 秒自动刷新、点击展开全文、一键清空。
+
+- **保留方式**：内存环形缓冲最近 200 条，重启即清空，不落盘；文本字段截断 2 万字符
+- **开关**：`ACTIVITYWATCH_DEBUG_VIEW`——开发环境默认开，生产默认关，`=1`/`=0` 显式覆盖。关闭时记录点全部 no-op（零开销），`GET /api/v1/debug/logs` 返回 `{"enabled": false}`
+- **端点**：`GET /api/v1/debug/logs?kind=&after_id=&limit=`（需 Bearer 认证）、`DELETE /api/v1/debug/logs`；端点自身不进日志环（防轮询刷屏）
+- **隐私边界**：记录的 prompt 本就是脱敏特征；HTTP 条目不记 query string（防 token 泄露）
+- 记录点：`main.py` 中间件（http）、`ingest_batch`（ingest）、`agent.py` 的 `invoke_llm`（agent_input/agent_output，Agent ①② 共用此入口）与 `_classify_chunk`（agent_inject，同时打一行 `[agent.memory]` INFO 日志，生产不开调试视图也能在 journalctl 看到）
+
 ## 配置与部署
 
 ### 环境变量（OpenAI 兼容 /chat/completions）
@@ -102,6 +113,7 @@ ACTIVITYWATCH_AGENT_API_KEY    # 三项齐全才启用
 ACTIVITYWATCH_AGENT_MODEL      # 如 deepseek-chat / qwen-plus / gpt-4o-mini
 ACTIVITYWATCH_AGENT_ENABLED=0  # 可选，强制关闭
 ACTIVITYWATCH_AGENT_LOG_PAYLOADS=0  # 可选；开发默认开，生产默认关
+ACTIVITYWATCH_DEBUG_VIEW=1    # 可选；开发者视图日志环，开发默认开，生产默认关
 ```
 
 **什么都不配 = 完全关闭，所有接口行为与无 Agent 版本一致**（有测试专门验证这一点）。

@@ -20,6 +20,7 @@ from zoneinfo import ZoneInfo
 
 from .agent import AgentService
 from .analyzer import ActivityAnalyzer, build_insights, serialize_segment
+from . import debuglog
 from .database import Database, normalize_scope, utc_iso
 from .merger import combine_segments
 from .schemas import AgentMemoryRequest, BatchRequest, HeartbeatRequest, SegmentCorrection, OfflineActivityRequest
@@ -242,6 +243,16 @@ def create_app(
                 elapsed_ms,
                 response.headers.get("content-length", "unknown"),
             )
+            # 开发者视图日志环：只记 method/path/status（不记 query，防 token 泄露）；
+            # 排除调试端点自身，避免前端轮询把环形缓冲刷满。
+            if not request.url.path.startswith("/api/v1/debug/"):
+                debuglog.record(
+                    "http",
+                    method=request.method,
+                    path=request.url.path,
+                    status=response.status_code,
+                    elapsed_ms=round(elapsed_ms, 1),
+                )
         return response
 
     def require_auth(request: Request, activity_token: str | None = Cookie(default=None)) -> None:
@@ -278,6 +289,14 @@ def create_app(
             combined_rebuilt += database.replace_combined_segments(day, _build_combined(day))
             # Agent ① 异步增强：只投递任务，绝不阻塞写入（规则底账已就绪）
             agent.request_enrich(day)
+        debuglog.record(
+            "ingest",
+            devices=sorted({(event.device_id, event.platform) for event in payload.events}),
+            accepted=accepted,
+            duplicates=duplicates,
+            segments_rebuilt=rebuilt,
+            days=sorted({day for day, _ in affected}),
+        )
         return {
             "accepted": accepted,
             "duplicates": duplicates,
@@ -589,6 +608,27 @@ def create_app(
             raise HTTPException(status_code=404, detail="memory not found")
         return {"id": memory_id, "deleted": True}
 
+    @application.get("/api/v1/debug/logs")
+    def debug_logs(
+        kind: str | None = Query(default=None),
+        after_id: int = Query(default=0, ge=0),
+        limit: int = Query(default=100, ge=1, le=200),
+        _: None = Depends(require_auth),
+    ) -> dict[str, Any]:
+        """开发者视图日志环（内存 200 条，重启清空；生产默认关，ACTIVITYWATCH_DEBUG_VIEW=1 开启）。"""
+        if not debuglog.debug_view_enabled():
+            return {"enabled": False, "latest_id": 0, "entries": []}
+        if kind and kind not in {"http", "ingest", "agent_inject", "agent_input", "agent_output"}:
+            raise HTTPException(status_code=422, detail="invalid kind")
+        entries = debuglog.buffer().entries(kind=kind, after_id=after_id, limit=limit)
+        return {"enabled": True, "latest_id": debuglog.buffer().latest_id(), "entries": entries}
+
+    @application.delete("/api/v1/debug/logs")
+    def debug_logs_clear(_: None = Depends(require_auth)) -> dict[str, Any]:
+        """清空调试日志环（便于「清空后复现」）。"""
+        debuglog.buffer().clear()
+        return {"cleared": True}
+
     @application.post("/api/v1/offline-activities")
     def add_offline_activity(payload: OfflineActivityRequest, _: None = Depends(require_auth)) -> dict[str, Any]:
         patterns = habit_patterns(payload.start_time, payload.end_time, analyzer.timezone) if payload.remember else []
@@ -682,6 +722,18 @@ def create_app(
         if redirect:
             return redirect
         return FileResponse(STATIC_DIR / "compare.html")
+
+    @application.get("/devlog", include_in_schema=False)
+    def devlog(request: Request, token: str | None = Query(default=None)) -> Response:
+        if production:
+            try:
+                require_auth(request, request.cookies.get("activity_token"))
+            except HTTPException:
+                return RedirectResponse("/login", status_code=303)
+        redirect = token_redirect("/devlog", token)
+        if redirect:
+            return redirect
+        return FileResponse(STATIC_DIR / "devlog.html")
 
     return application
 
