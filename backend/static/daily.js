@@ -1,5 +1,4 @@
 const CATEGORY_COLORS = ActivityUI.colors;
-const FALLBACK_COLORS = ["#6fe0a3", "#6ba7ff", "#f3b562", "#e07a72", "#b88cff", "#7fd4d4", "#d98fc0"];
 // 用本地时区生成 YYYY-MM-DD；toISOString() 是 UTC，凌晨时段会错到昨天
 function localDateKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
@@ -12,38 +11,11 @@ let reportGeneration = 0;
 let purposeSummary = [];
 let lastReport = null;
 
-function formatClock(iso) { return ActivityUI.clock(iso); }
-
-function formatDuration(seconds) { return ActivityUI.duration(seconds); }
-
-function formatHours(seconds) {
-  return formatDuration(seconds);
-}
-
-function escapeHtml(value) {
-  const node = document.createElement("div");
-  node.textContent = String(value ?? "");
-  return node.innerHTML;
-}
-
-function platformLabel(platform) {
-  if (platform === "android") return "Android";
-  if (platform === "windows") return "Windows";
-  return "无设备";
-}
-
-function showToast(message) {
-  const toast = document.getElementById("toast");
-  toast.textContent = message;
-  toast.classList.add("visible");
-  window.setTimeout(() => toast.classList.remove("visible"), 2200);
-}
-
-function shiftDay(day, delta) {
-  const date = new Date(`${day}T12:00:00`);
-  date.setDate(date.getDate() + delta);
-  return localDateKey(date);
-}
+const formatClock = ActivityUI.clock;
+const formatDuration = ActivityUI.duration;
+const escapeHtml = ActivityUI.escape;
+const platformLabel = ActivityUI.platformLabel;
+const showToast = ActivityUI.toast;
 
 function renderHeadline(report) {
   const insights = report.insights || {};
@@ -70,7 +42,7 @@ function renderHeadline(report) {
 
 function renderStats(report) {
   const insights = report.insights || {};
-  document.getElementById("trackedTime").textContent = formatHours(report.total_seconds);
+  document.getElementById("trackedTime").textContent = formatDuration(report.total_seconds);
   document.getElementById("combinedCount").textContent =
     (report.combined_segments || []).filter((item) => item.category !== "无设备记录").length;
   document.getElementById("longestFocus").textContent = formatDuration((insights.focus || {}).longest_seconds || 0);
@@ -203,35 +175,24 @@ function renderDistribution() {
 function renderRankings(report) {
   const insights = report.insights || {};
   const apps = insights.apps || [];
-  document.getElementById("dailyAppRanking").innerHTML = apps.length
-    ? apps.map((app) => `
-      <li class="ranking-row">
-        <span class="ranking-name" title="${escapeHtml(app.process)}">${escapeHtml(app.process)}</span>
-        <span class="ranking-bar"><i style="width:${app.share}%"></i></span>
-        <b class="ranking-value">${escapeHtml(app.duration_text)}</b>
-      </li>`).join("")
-    : `<li class="ranking-empty">暂无应用数据</li>`;
+  document.getElementById("dailyAppRanking").innerHTML = ActivityUI.rankingRows(
+    apps.map((app) => ({ name: app.process, title: app.process, width: app.share, value: app.duration_text })),
+    "暂无应用数据"
+  );
 
   const behaviors = insights.behaviors || [];
   const behaviorTotal = behaviors.reduce((sum, item) => sum + item.seconds, 0);
-  document.getElementById("dailyBehaviorRanking").innerHTML = behaviors.length
-    ? behaviors.map((behavior) => `
-      <li class="ranking-row">
-        <span class="ranking-name">${escapeHtml(behavior.behavior)}</span>
-        <span class="ranking-bar"><i style="width:${behaviorTotal ? Math.round(behavior.seconds * 100 / behaviorTotal) : 0}%"></i></span>
-        <b class="ranking-value">${escapeHtml(behavior.duration_text)}</b>
-      </li>`).join("")
-    : `<li class="ranking-empty">暂无行为数据</li>`;
+  document.getElementById("dailyBehaviorRanking").innerHTML = ActivityUI.rankingRows(
+    behaviors.map((behavior) => ({ name: behavior.behavior, width: behaviorTotal ? Math.round(behavior.seconds * 100 / behaviorTotal) : 0, value: behavior.duration_text })),
+    "暂无行为数据"
+  );
 
   const sources = (insights.switches || {}).top_sources || [];
-  document.getElementById("interruptionSources").innerHTML = sources.length
-    ? sources.map(([source, count]) => `
-      <li class="ranking-row">
-        <span class="ranking-name" title="${escapeHtml(source)}">${escapeHtml(source)}</span>
-        <span class="ranking-bar"><i style="width:${Math.round(count * 100 / Math.max(1, ...sources.map(item=>item[1])))}%"></i></span>
-        <b class="ranking-value">${count} 次</b>
-      </li>`).join("")
-    : `<li class="ranking-empty">当天没有记录到短暂打断</li>`;
+  const maxCount = Math.max(1, ...sources.map((item) => item[1]));
+  document.getElementById("interruptionSources").innerHTML = ActivityUI.rankingRows(
+    sources.map(([source, count]) => ({ name: source, title: source, width: Math.round(count * 100 / maxCount), value: `${count} 次` })),
+    "当天没有记录到短暂打断"
+  );
 }
 
 const MEMORY_SOURCE_LABELS = {

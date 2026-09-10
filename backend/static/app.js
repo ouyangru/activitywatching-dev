@@ -1,11 +1,15 @@
 const CATEGORY_COLORS = ActivityUI.colors;
 const CATEGORIES = Object.keys(CATEGORY_COLORS).filter(x => x !== "生活事务");
-const PURPOSE_FALLBACK_COLORS = ["#6fe0a3", "#6ba7ff", "#f3b562", "#e07a72", "#b88cff", "#7fd4d4", "#d98fc0"];
 const EDITABLE_CATEGORIES = CATEGORIES.filter((category) => category !== "无设备记录");
 const OFFLINE_CATEGORIES = ActivityUI.editable;
 const TIMELINE_MERGE_GAP_MS = 0;
 const DEVICE_DISPLAY_TIMEOUT_MS = 48 * 60 * 60 * 1000;
 const distributionCharts = [];
+const formatClock = ActivityUI.clock;
+const formatDuration = ActivityUI.duration;
+const escapeHtml = ActivityUI.escape;
+const platformLabel = ActivityUI.platformLabel;
+const showToast = ActivityUI.toast;
 let dashboardGeneration = 0;
 let selectedDevice = "";
 let timelineOrder = "desc";
@@ -18,12 +22,6 @@ let lastDistributionTopology = "";
 let latestInsights = null;
 let pendingCombinedCorrection = null;
 
-function platformLabel(platform) {
-  if (platform === "android") return "Android";
-  if (platform === "windows") return "Windows";
-  return "无设备";
-}
-
 function withDay(path) {
   const url = new URL(path, location.origin);
   url.searchParams.set('day', selectedDay);
@@ -33,30 +31,6 @@ function withDevice(path) {
   const url = new URL(withDay(path), location.origin);
   if (selectedDevice) url.searchParams.set('device_id', selectedDevice);
   return url.pathname + url.search;
-}
-
-function formatClock(iso) { return ActivityUI.clock(iso); }
-
-function formatDuration(seconds) { return ActivityUI.duration(seconds); }
-
-function formatTrackedHours(seconds) {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.round((seconds % 3600) / 60);
-  if (hours > 0) return `${hours}h${minutes > 0 ? " " + minutes + "min" : ""}`;
-  return `${minutes}min`;
-}
-
-function escapeHtml(value) {
-  const node = document.createElement("div");
-  node.textContent = String(value ?? "");
-  return node.innerHTML;
-}
-
-function showToast(message) {
-  const toast = document.getElementById("toast");
-  toast.textContent = message;
-  toast.classList.add("visible");
-  window.setTimeout(() => toast.classList.remove("visible"), 2200);
 }
 
 function renderTimeline(segments) {
@@ -203,25 +177,17 @@ function renderInsights(insights) {
     <div class="focus-cell"><span>短暂打断</span><strong>${switches.interruptions || 0} 次</strong></div>`;
 
   const apps = insights.apps || [];
-  document.getElementById("appRanking").innerHTML = apps.length
-    ? apps.map((app) => `
-      <li class="ranking-row">
-        <span class="ranking-name" title="${escapeHtml(app.process)}">${escapeHtml(app.process)}</span>
-        <span class="ranking-bar"><i style="width:${app.share}%"></i></span>
-        <b class="ranking-value">${escapeHtml(app.duration_text)}</b>
-      </li>`).join("")
-    : `<li class="ranking-empty">暂无应用数据</li>`;
+  document.getElementById("appRanking").innerHTML = ActivityUI.rankingRows(
+    apps.map((app) => ({ name: app.process, title: app.process, width: app.share, value: app.duration_text })),
+    "暂无应用数据"
+  );
 
   const behaviors = insights.behaviors || [];
   const behaviorTotal = behaviors.reduce((sum, item) => sum + item.seconds, 0);
-  document.getElementById("behaviorRanking").innerHTML = behaviors.length
-    ? behaviors.map((behavior) => `
-      <li class="ranking-row">
-        <span class="ranking-name">${escapeHtml(behavior.behavior)}</span>
-        <span class="ranking-bar"><i style="width:${behaviorTotal ? Math.round(behavior.seconds * 100 / behaviorTotal) : 0}%"></i></span>
-        <b class="ranking-value">${escapeHtml(behavior.duration_text)}</b>
-      </li>`).join("")
-    : `<li class="ranking-empty">暂无行为数据</li>`;
+  document.getElementById("behaviorRanking").innerHTML = ActivityUI.rankingRows(
+    behaviors.map((behavior) => ({ name: behavior.behavior, width: behaviorTotal ? Math.round(behavior.seconds * 100 / behaviorTotal) : 0, value: behavior.duration_text })),
+    "暂无行为数据"
+  );
 }
 
 async function loadDevices() {

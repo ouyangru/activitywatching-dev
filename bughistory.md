@@ -318,3 +318,11 @@
 - 解决：日期参数只作为跨页导航的一次性入口——`initialDay()` 读取后立即从地址栏删除该参数，`syncDay()` 不再写 URL（仅更新跨页链接与时区提示）；对比页 `load()` 不再持久化 `start`/`end`，初始化读取后同样清除，刷新后回落到“今天往前 7 天”的默认区间。
 - 版本：基于 7241542，前端 ui.js/compare.js v=20260910-1。
 - 验证：新增单元测试确认 day 参数读取一次后被消费、再次调用返回今天（7/7 passed）；Playwright 实测三页：带 ?day=2026-09-08 进入均正确加载该日且地址栏参数被清除，刷新后首页/日报均显示 2026-09-10（今天），对比页回落到 2026-09-04 至 2026-09-10 默认区间。
+
+
+### 2026-09-10T16:57:16+08:00 前端工具函数双份实现且排行行引号未转义
+- 现象：escapeHtml/formatClock/formatDuration/platformLabel/showToast 在 app.js 与 daily.js 各存一份；排行行 HTML 由两页各自拼接，进程名含引号时会破坏 title="…" 属性边界（DOM 序列化只转义 & < >，不转义引号），存在属性注入风险。
+- 根因：共享模块 ui.js 建立时未回迁两页既有工具函数，排行行模板复制粘贴且沿用 DOM 序列化式转义。
+- 解决：ui.js 新增 platformLabel、toast、rankingRows 共享实现；app.js/daily.js 删除重复函数体改为别名引用；排行行统一走 rankingRows（ActivityUI.escape 正则转义，覆盖引号）；顺带删除无引用的 PURPOSE_FALLBACK_COLORS、FALLBACK_COLORS、formatTrackedHours、shiftDay。
+- 版本：基于 a2a4789，前端 ui.js/app.js/daily.js v=20260910-2。
+- 验证：单元测试新增 rankingRows 转义用例（含引号注入），8/8 passed；Playwright 实测总览/日报/对比三页无控制台错误，2026-09-09 真实数据日排行渲染与旧实现一致（Code.exe 50% 条宽、title 属性、空态文案），无数据日回落“暂无应用数据”。

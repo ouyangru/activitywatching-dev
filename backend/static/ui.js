@@ -12,6 +12,11 @@ window.ActivityUI = (() => {
   const shift = (day,n) => { const d=new Date(day+'T12:00:00Z'); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10); };
   const duration = value => { const s=Math.max(0,Number(value)||0); if(s<60)return `${Math.round(s)}秒`; const m=Math.round(s/60); return m>=60 ? `${Math.floor(m/60)}h${m%60 ? ` ${m%60}min` : ''}` : `${m}min`; };
   const clock = value => new Intl.DateTimeFormat('zh-CN',{timeZone:timezone,hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(value));
+  const platformLabel = value => value === 'android' ? 'Android' : value === 'windows' ? 'Windows' : '无设备';
+  function toast(message) { const el=document.getElementById('toast'); if(!el)return; el.textContent=message; el.classList.add('visible'); setTimeout(()=>el.classList.remove('visible'),2200); }
+  function rankingRows(items,emptyText) {
+    return items.length ? items.map(x=>`<li class="ranking-row">${x.title!=null?`<span class="ranking-name" title="${escape(x.title)}">`:'<span class="ranking-name">'}${escape(x.name)}</span><span class="ranking-bar"><i style="width:${x.width}%"></i></span><b class="ranking-value">${escape(x.value)}</b></li>`).join('') : `<li class="ranking-empty">${escape(emptyText)}</li>`;
+  }
   async function json(url, options) {
     const response=await fetch(url,options);
     if(!response.ok) throw new Error(response.status===401 ? '登录已过期，请重新登录' : `请求失败（${response.status}），请重试`);
@@ -75,5 +80,5 @@ window.ActivityUI = (() => {
     target.innerHTML=rows.length?rows.map((x,i)=>`<article class="reflection-item"><span class="reflection-number">0${i+1}</span><div><h3>${escape(x.title)}</h3><p>${escape(x.text)}</p><button class="ghost-button" data-evidence="${i}">查看 ${clock(x.segment.start_time_local)}—${clock(x.segment.end_time_local)} 的记录</button></div></article>`).join(''):'<p class="empty">尚无足够活动记录，暂不生成复盘建议。</p>';
     target.querySelectorAll('[data-evidence]').forEach(b=>b.onclick=()=>onSelect(rows[Number(b.dataset.evidence)].segment));
   }
-  return {colors,editable,ready,setTimezone,initialDay,today:dayKey,validDay,shift,duration,clock,escape,json,chart,pie,disposeWithin,bindDate,syncDay,flash,correctInterval,reflection,get timezone(){return timezone;}};
+  return {colors,editable,ready,setTimezone,initialDay,today:dayKey,validDay,shift,duration,clock,platformLabel,toast,rankingRows,escape,json,chart,pie,disposeWithin,bindDate,syncDay,flash,correctInterval,reflection,get timezone(){return timezone;}};
 })();
