@@ -510,3 +510,113 @@ def test_memory_endpoints_work_when_agent_disabled(tmp_path: Path):
         status = client.get("/api/v1/agent/status").json()
         assert status["enabled"] is False
         assert status["memory_count"] == 1
+
+
+# ----------------------------------------------------------------------
+# 知识库优化：scope 归一化 / stale 生命周期 / project_fact 注入
+# ----------------------------------------------------------------------
+
+from datetime import datetime, timedelta, timezone
+
+from backend.app.database import normalize_scope, utc_iso
+
+
+def test_memory_scope_normalization_matches_variants(tmp_path: Path):
+    database = Database(tmp_path / "scope.db")
+    assert normalize_scope("C:\\Tools\\Code.EXE") == "code.exe"
+    assert normalize_scope("  code  ") == "code"
+    assert normalize_scope("/usr/bin/code") == "code"
+
+    database.add_memory({"kind": "app_fact", "scope": "code.exe", "content": "写代码"})
+    # 存 code.exe：带路径、大小写、短形态都能查到
+    assert len(database.memory_for("C:\\Tools\\Code.EXE")) == 1
+    assert len(database.memory_for("code")) == 1
+    assert len(database.memory_for("CODE.EXE")) == 1
+    # Android 包名绝不能按 . 切分
+    database.add_memory({"kind": "app_fact", "scope": "com.tencent.mm", "content": "微信"})
+    assert [row["scope"] for row in database.memory_for("com.tencent.mm")] == ["com.tencent.mm"]
+    assert database.memory_for("com.tencent") == []
+
+    # 历史短形态（存了 obsidian）：查 obsidian.exe 也能命中
+    database.add_memory({"kind": "app_fact", "scope": "obsidian", "content": "旧数据"})
+    assert len(database.memory_for("Obsidian.exe")) == 1
+
+
+def test_supersede_matches_legacy_scope_forms(tmp_path: Path):
+    database = Database(tmp_path / "supersede.db")
+    database.add_memory({"kind": "correction", "scope": "obsidian", "category": "工作", "content": "旧纠正"})
+    # 新纠正写成 obsidian.exe，历史短形态同样被归档
+    assert database.supersede_memories("Obsidian.exe", "correction", "学习") == 1
+    memories = database.list_memories()
+    assert memories[0]["status"] == "superseded"
+
+
+def test_stale_memories_expire_and_correction_exempt(agent_client):
+    client, fake, database = agent_client
+    database.add_memory({"kind": "app_fact", "scope": "oldapp.exe", "content": "旧应用事实"})
+    database.add_memory({"kind": "project_fact", "scope": "old-project", "content": "旧项目"})
+    database.add_memory({"kind": "correction", "scope": "keep.exe", "category": "学习", "content": "用户纠正"})
+    version_before = database.memory_version()
+
+    # 把前两条的 last_seen_at 改成 8 个月前（correction 保持 created_at 为现在）
+    stale_time = utc_iso(datetime.now(timezone.utc) - timedelta(days=240))
+    with database.connect() as connection:
+        connection.execute(
+            "UPDATE agent_memory SET last_seen_at = ? WHERE scope IN ('oldapp.exe', 'old-project')",
+            (stale_time,),
+        )
+    database._invalidate_memory_version()
+
+    expired = database.expire_stale_memories({"app_fact": 45, "project_fact": 30})
+    assert expired == 2
+
+    # stale 不再注入检索；correction 豁免仍然 active
+    assert database.memory_for("oldapp.exe") == []
+    assert database.memory_version() != version_before
+    assert len(database.memory_for("keep.exe")) == 1
+
+    # API 层：stale 落入 archived，用户可见可追溯
+    memories = client.get("/api/v1/agent/memory").json()
+    assert {item["status"] for item in memories["archived"]} == {"stale"}
+    assert all(item["status"] == "active" for item in memories["active"])
+
+
+def test_stale_sweep_wired_into_enrich(agent_client):
+    client, fake, database = agent_client
+    database.add_memory({"kind": "app_fact", "scope": "gone.exe", "content": "过期事实"})
+    stale_time = utc_iso(datetime.now(timezone.utc) - timedelta(days=240))
+    with database.connect() as connection:
+        connection.execute("UPDATE agent_memory SET last_seen_at = ? WHERE scope = 'gone.exe'", (stale_time,))
+    database._invalidate_memory_version()
+
+    fresh = AgentService(database, "Asia/Shanghai", llm=fake, model_name="fake")
+    fresh.enrich_day("2026-09-05")  # 无候选也走清扫
+    assert [row["status"] for row in database.list_memories()] == ["stale"]
+
+
+def test_project_fact_injected_into_classify(agent_client):
+    client, fake, database = agent_client
+    client.post(
+        "/api/v1/agent/memory",
+        json={"kind": "project_fact", "scope": "mini-nccl", "content": "mini-nccl 是毕业设计项目，相关活动算学习"},
+    )
+    client.post(
+        "/api/v1/agent/memory",
+        json={"kind": "project_fact", "scope": "unrelated-topic", "content": "无关项目不应被注入"},
+    )
+    client.post(
+        "/api/v1/events/batch",
+        json={"events": [event(1, "2026-09-05T10:00:00Z", process="Obsidian.exe", title="mini-nccl 设计笔记 - Obsidian", duration_ms=60_000)]},
+    )
+    fake.judgments = []
+    client.post("/api/v1/agent/enrich", json={"day": "2026-09-05"})
+
+    classify_prompt = next(p for p in fake.user_prompts if "digest" in p)
+    assert "毕业设计项目" in classify_prompt
+    assert "[project_fact]" in classify_prompt
+    assert "unrelated-topic" not in classify_prompt
+
+    # 项目记忆命中被 touch：hit_count 更新（stale 生命周期的依据）
+    memory = next(item for item in client.get("/api/v1/agent/memory").json()["active"] if item["scope"] == "mini-nccl")
+    assert memory["hit_count"] >= 1
+    assert memory["last_seen_at"]

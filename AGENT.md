@@ -28,12 +28,12 @@ agent_memory    ──▶ 长期记忆（注入两个 Agent 的 prompt）
 
 | 文件 | 职责 |
 |---|---|
-| `backend/app/agent.py` | **Agent ①**：单片段状态判定。`AgentService` 类：候选挑选、脱敏（`sanitize_title`）、digest 缓存、LLM 调用（OpenAI 兼容）、evidence 落库、高置信自动沉淀记忆、读取层覆盖（`apply_evidence`） |
+| `backend/app/agent.py` | **Agent ①**：单片段状态判定。`AgentService` 类：候选挑选、脱敏（`sanitize_title`）、digest 缓存、LLM 调用（OpenAI 兼容）、evidence 落库、高置信自动沉淀记忆、stale 节流清扫、分类时注入应用记忆 + 匹配的 project_fact、读取层覆盖（`apply_evidence`） |
 | `backend/app/summarizer.py` | **Agent ②**：日报叙述生成。`DailySummarizer` 类：按 `(day, 数据版本)` 缓存、后台线程重生成、prompt 注入长期记忆 + 近 7 天分类时长趋势 |
 | `backend/app/database.py` | 三张派生表的建表与读写方法（见下） |
 | `backend/app/main.py` | 接线：`ingest_batch` 投递后台 enrich；`timeline/summary/insights/status/daily` 读取层先过 `apply_evidence`；`combined_segments` 在合并**前**应用覆盖（这样跨设备时间线继承 Agent 语义）；Agent 管理端点 |
 | `backend/app/schemas.py` | `SegmentCorrection`（含 `remember`/`memory_note`）、`AgentEnrichRequest`、`MemoryAddRequest` |
-| `tests/test_agent.py` | Agent 全量测试（16 个），含注入 FakeLLM 的 fixture 与环境隔离 fixture |
+| `tests/test_agent.py` | Agent 全量测试（25 个），含注入 FakeLLM 的 fixture 与环境隔离 fixture |
 
 ## 数据表（均只增不覆盖原始数据）
 
@@ -53,10 +53,12 @@ agent_memory    ──▶ 长期记忆（注入两个 Agent 的 prompt）
 | 字段 | 说明 |
 |---|---|
 | `kind` | `app_fact`（应用事实）/ `project_fact`（项目背景）/ `correction`（纠正记忆） |
-| `scope` | 匹配键：进程名（小写）或主题词，检索用精确匹配，**无向量库** |
+| `scope` | 匹配键：进程名或主题词。写入规范化为小写+去路径；检索双向兼容 `.exe` 形态（存 `code.exe` 查 `code`、存 `code` 查 `code.exe` 均命中；Android 包名不按 `.` 切分），**无向量库** |
 | `source` | `manual`（用户告知）/ `correction`（修正归纳）/ `auto`（自动沉淀） |
-| `status` | `active` / `superseded`（冲突时归档，不删除，可追溯） |
-| `hit_count` / `last_seen_at` | 命中统计 |
+| `status` | `active` / `superseded`（冲突归档，可追溯）/ `stale`（长期未命中自动降级，见下） |
+| `hit_count` / `last_seen_at` | 命中统计；被注入 prompt 时 touch，也是 stale 判定依据 |
+
+**记忆生命周期（stale）**：`app_fact` 45 天、`project_fact` 30 天未命中（`last_seen_at`，从未命中则看 `created_at`）自动降级为 `stale`，不再注入 prompt 但保留可查。`correction`（用户亲口纠正）与 `pattern`（用户确认的线下习惯）**豁免**，永不自动降级。降级单向，由 AgentService 每次 enrich 时节流触发（6 小时一次），失败不影响主流程。
 
 **三条写入路径**：
 1. 修正时记住：`PATCH /api/v1/segments/{id}` 带 `remember: true`（可选 `memory_note`），系统归纳出该应用的泛化记忆；同一应用再次纠正为不同分类时旧记忆自动 superseded
@@ -130,6 +132,9 @@ curl -H "Authorization: Bearer $TOKEN" https://47.82.104.59/api/v1/agent/status
 | `AUTO_PROMOTE_HITS` | 5 | 自动沉淀记忆的命中门槛 |
 | `AUTO_PROMOTE_CONFIDENCE` | 0.75 | 自动沉淀的置信度门槛 |
 | `TITLE_MAX_CHARS` | 80 | 标题脱敏截断长度 |
+| `STALE_AFTER_DAYS` | app_fact 45 / project_fact 30 | 未命中多少天自动降级为 stale（correction/pattern 豁免） |
+| `STALE_SWEEP_INTERVAL_SECONDS` | 21600 | stale 清扫节流间隔（挂在 enrich 入口） |
+| `PROJECT_FACTS_PER_ITEM` | 3 | 分类时每个片段最多注入的 project_fact 条数（按标题摘要子串匹配） |
 
 ## 隐私红线（改动前必读）
 
@@ -155,8 +160,7 @@ PYTHONIOENCODING=utf-8 "C:\Users\aosika\.workbuddy\binaries\python\envs\default\
 ## 已知边界 / 待办
 
 - **无标题事件共享 digest**：完全没有 `window_title` 的事件（Android 部分应用）同进程共用一个判断。改进方向：把域名/应用内路径加进 digest 特征
-- **记忆过期未实现**：设计里有 `stale` 状态（项目级事实 30 天不出现自动降级），目前只有 `active`/`superseded`
-- **记忆检索是精确匹配**：条目过千再考虑语义检索；现在 scope 按进程名/主题词匹配足够
+- **记忆检索是归一化精确匹配**：scope 已做进程名归一（小写/去路径/`.exe` 双向兼容），project_fact 按标题摘要子串参与分类；语义检索仍待条目过千再考虑
 - Agent ② 日报的"跨周对比"只有近 7 天数据，更长的趋势需要历史聚合表
 
 ## 未来迁移到 Agent SDK 的两道接缝（已预留）

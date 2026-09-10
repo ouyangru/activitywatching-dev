@@ -20,7 +20,7 @@ from zoneinfo import ZoneInfo
 
 from .agent import AgentService
 from .analyzer import ActivityAnalyzer, build_insights, serialize_segment
-from .database import Database, utc_iso
+from .database import Database, normalize_scope, utc_iso
 from .merger import combine_segments
 from .schemas import AgentMemoryRequest, BatchRequest, HeartbeatRequest, SegmentCorrection, OfflineActivityRequest
 from .summarizer import DailySummarizer
@@ -580,7 +580,7 @@ def create_app(
                 "confidence": payload.confidence,
             }
         )
-        return {"id": memory_id, "scope": payload.scope.lower(), "content": payload.content}
+        return {"id": memory_id, "scope": normalize_scope(payload.scope), "content": payload.content}
 
     @application.delete("/api/v1/agent/memory/{memory_id}")
     def agent_memory_delete(memory_id: int, _: None = Depends(require_auth)) -> dict[str, Any]:

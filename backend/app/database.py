@@ -4,7 +4,7 @@ import json
 import sqlite3
 import threading
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -178,6 +178,27 @@ CREATE TABLE IF NOT EXISTS device_reports (
 
 def utc_iso(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def normalize_scope(value: Any) -> str:
+    """scope 规范形：小写、去路径前缀、折叠空白；保留 .exe 后缀（存储标准）。"""
+    text = str(value or "").strip().lower()
+    for separator in ("/", "\\"):
+        if separator in text:
+            text = text.rsplit(separator, 1)[-1]
+    text = " ".join(text.split())
+    return text[:128]
+
+
+def scope_lookup_keys(value: Any) -> tuple[str, ...]:
+    """查询键：双向兼容 .exe 形态（存 code.exe 查 code、存 code 查 code.exe 均命中；
+    Android 包名绝不按 . 切分）。"""
+    key = normalize_scope(value)
+    if not key:
+        return ()
+    if key.endswith(".exe"):
+        return (key, key[: -len(".exe")])
+    return (key, f"{key}.exe")
 
 
 class Database:
@@ -676,6 +697,7 @@ class Database:
     def add_memory(self, record: dict[str, Any]) -> int:
         """新增一条长期记忆；kind/scope/source 由调用方约束，content 截断到 280 字符。"""
         now = utc_iso(datetime.now(timezone.utc))
+        scope = normalize_scope(record.get("scope"))
         with self._write_lock, self.connect() as connection:
             cursor = connection.execute(
                 """
@@ -685,7 +707,7 @@ class Database:
                 """,
                 (
                     str(record.get("kind") or "project_fact")[:32],
-                    str(record.get("scope") or "").strip().lower()[:128],
+                    scope,
                     str(record.get("category") or "")[:16],
                     str(record.get("content") or "").strip()[:280],
                     str(record.get("source") or "manual")[:16],
@@ -699,20 +721,21 @@ class Database:
         return memory_id
 
     def memory_for(self, scope: str) -> list[sqlite3.Row]:
-        """按进程名/主题精确匹配取 active 记忆（大小写不敏感）。"""
-        key = (scope or "").strip().lower()
-        if not key:
+        """按进程名/主题取 active 记忆；查询侧兼容带路径、大小写、去 .exe 的变体。"""
+        keys = scope_lookup_keys(scope)
+        if not keys:
             return []
+        placeholders = ",".join("?" * len(keys))
         with self.connect() as connection:
             return list(
                 connection.execute(
-                    """
+                    f"""
                     SELECT * FROM agent_memory
-                    WHERE scope = ? AND status = 'active'
+                    WHERE scope IN ({placeholders}) AND status = 'active'
                     ORDER BY CASE source WHEN 'correction' THEN 0 WHEN 'manual' THEN 1 ELSE 2 END, confidence DESC, id DESC
                     LIMIT 20
                     """,
-                    (key,),
+                    keys,
                 )
             )
 
@@ -741,14 +764,20 @@ class Database:
         return deleted
 
     def supersede_memories(self, scope: str, kind: str, keep_category: str) -> int:
-        """同 scope 同 kind 且 category 不同的旧记忆标记 superseded（新纠正永远赢，旧的归档可追溯）。"""
+        """同 scope 同 kind 且 category 不同的旧记忆标记 superseded（新纠正永远赢，旧的归档可追溯）。
+
+        查询侧兼容历史短形态（存了 code、纠正写成 code.exe 时旧记忆同样被归档）。"""
+        keys = scope_lookup_keys(scope)
+        if not keys:
+            return 0
+        placeholders = ",".join("?" * len(keys))
         with self._write_lock, self.connect() as connection:
             cursor = connection.execute(
-                """
+                f"""
                 UPDATE agent_memory SET status = 'superseded', updated_at = ?
-                WHERE scope = ? AND kind = ? AND status = 'active' AND category != ?
+                WHERE scope IN ({placeholders}) AND kind = ? AND status = 'active' AND category != ?
                 """,
-                (utc_iso(datetime.now(timezone.utc)), (scope or "").strip().lower(), kind, keep_category or ""),
+                (utc_iso(datetime.now(timezone.utc)), *keys, kind, keep_category or ""),
             )
             superseded = cursor.rowcount
         if superseded:
@@ -788,6 +817,38 @@ class Database:
         because hit counters and last_seen_at are not part of the version."""
         with self._memory_version_lock:
             self._memory_version_cache = None
+
+    def expire_stale_memories(self, thresholds: dict[str, int]) -> int:
+        """长期未命中的自动沉淀记忆降级为 stale（单向，归档可查）。
+
+        correction（用户亲口纠正）与 pattern（用户确认的线下习惯）权威性最高，豁免。
+        时间比较用 ISO 字符串字典序（库内时间统一为带 Z 的 UTC ISO 格式）。"""
+        now = datetime.now(timezone.utc)
+        expired = 0
+        with self._write_lock, self.connect() as connection:
+            for kind, days in thresholds.items():
+                cutoff = utc_iso(now - timedelta(days=days))
+                cursor = connection.execute(
+                    """
+                    UPDATE agent_memory SET status = 'stale', updated_at = ?
+                    WHERE kind = ? AND status = 'active'
+                      AND COALESCE(NULLIF(last_seen_at, ''), created_at) < ?
+                    """,
+                    (utc_iso(now), kind, cutoff),
+                )
+                expired += cursor.rowcount
+        if expired:
+            self._invalidate_memory_version()
+        return expired
+
+    def project_facts(self) -> list[sqlite3.Row]:
+        """全部 active 的项目背景记忆（供分类时按标题摘要匹配注入）。"""
+        with self.connect() as connection:
+            return list(
+                connection.execute(
+                    "SELECT * FROM agent_memory WHERE kind = 'project_fact' AND status = 'active' ORDER BY id DESC LIMIT 50"
+                )
+            )
 
     def offline_memories(self) -> list[dict[str, Any]]:
         with self.connect() as connection:

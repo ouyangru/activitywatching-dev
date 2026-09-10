@@ -61,6 +61,11 @@ LLM_CIRCUIT_MAX_SECONDS = 3600
 INVALID_RESULT_RETRY_SECONDS = 3600
 AUTO_PROMOTE_HITS = 5
 AUTO_PROMOTE_CONFIDENCE = 0.75
+# 长期未命中的自动沉淀记忆降级为 stale 的窗口（天）；correction/pattern 豁免。
+STALE_AFTER_DAYS = {"app_fact": 45, "project_fact": 30}
+STALE_SWEEP_INTERVAL_SECONDS = 6 * 3600
+# 每个 chunk 最多注入的项目背景记忆条数（按标题摘要子串匹配）
+PROJECT_FACTS_PER_ITEM = 3
 
 CLASSIFY_SYSTEM_PROMPT = """你是一个本机活动追踪系统的行为判定助手。
 输入是若干条"脱敏活动片段摘要"：进程名、窗口标题摘要、分钟级交互频率。
@@ -291,6 +296,7 @@ class AgentService:
         self.rows_provider = None
         # 每个 (digest, day) 只累计一次命中，防止重复触发沉淀
         self._hit_bumped: set[tuple[str, str]] = set()
+        self._last_stale_sweep = 0.0
 
     # ------------------------------------------------------------------
     # 异步触发（写路径只投递，不等待）
@@ -341,6 +347,7 @@ class AgentService:
             return {"enabled": 0, "candidates": 0, "new": 0}
         if self.cooldown_seconds() > 0:
             return {"enabled": 1, "candidates": 0, "new": 0}
+        self._maybe_expire_stale()
         local_start = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=self.timezone)
         start = local_start.astimezone(timezone.utc)
         end = (local_start + timedelta(days=1)).astimezone(timezone.utc)
@@ -406,6 +413,19 @@ class AgentService:
     def cooldown_seconds(self) -> float:
         return llm_cooldown_seconds(self.llm)
 
+    def _maybe_expire_stale(self) -> None:
+        """节流的 stale 清扫；失败只记日志，绝不影响 enrich 主流程。"""
+        now = time.monotonic()
+        if now - self._last_stale_sweep < STALE_SWEEP_INTERVAL_SECONDS:
+            return
+        self._last_stale_sweep = now
+        try:
+            expired = self.database.expire_stale_memories(STALE_AFTER_DAYS)
+            if expired:
+                LOG.info("[agent.stale] %d 条记忆超期未命中，降级为 stale", expired)
+        except Exception:
+            LOG.exception("[agent.stale] 清扫过期记忆失败（忽略，下次重试）")
+
     def _digest_in_cooldown(self, digest: str) -> bool:
         retry_at = self._digest_retry_at.get(digest, 0.0)
         if retry_at <= time.monotonic():
@@ -451,12 +471,26 @@ class AgentService:
     def _classify_chunk(self, chunk: list[dict[str, Any]]) -> int:
         # 注入该应用相关的长期记忆（用户纠正 > 自动沉淀），并记录命中
         touched: list[int] = []
+        project_facts = self.database.project_facts()
         for item in chunk:
-            memories = self.database.memory_for(item.get("process") or "")
-            if not memories:
-                continue
-            item["known_facts"] = [sanitize_title(row["content"], 280) for row in memories[:5]]
-            touched.extend(row["id"] for row in memories[:5])
+            known_facts: list[str] = []
+            for row in self.database.memory_for(item.get("process") or "")[:5]:
+                known_facts.append(sanitize_title(row["content"], 280))
+                touched.append(row["id"])
+            # 项目背景：scope 出现在标题摘要或进程名里即视为相关（子串匹配）
+            haystack = f"{item.get('title_summary') or ''} {item.get('process') or ''}".lower()
+            matched = 0
+            for row in project_facts:
+                scope = (row["scope"] or "").strip().lower()
+                if not scope or scope not in haystack:
+                    continue
+                known_facts.append(sanitize_title(f"[project_fact] {row['content']}", 280))
+                touched.append(row["id"])
+                matched += 1
+                if matched >= PROJECT_FACTS_PER_ITEM:
+                    break
+            if known_facts:
+                item["known_facts"] = known_facts
         if touched:
             self.database.touch_memories(touched)
         user_prompt = json.dumps([{k: v for k, v in item.items() if not k.startswith('_')} for item in chunk], ensure_ascii=False)
