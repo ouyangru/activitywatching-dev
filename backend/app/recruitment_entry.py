@@ -5,6 +5,7 @@ import logging
 import os
 import secrets
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import Cookie, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, RedirectResponse
@@ -74,6 +75,11 @@ def recruitment_config_status(request: Request, activity_token: str | None = Coo
     }
 
 
+def _login_redirect(request: Request) -> RedirectResponse:
+    next_path = quote(request.url.path, safe="/")
+    return RedirectResponse(f"/login?next={next_path}", status_code=303)
+
+
 def _recruitment_page(request: Request, token: str | None) -> Response:
     production = os.getenv("ACTIVITYWATCH_ENV", "development") == "production"
     configured_token = app.state.api_token
@@ -81,7 +87,7 @@ def _recruitment_page(request: Request, token: str | None) -> Response:
         try:
             require_recruitment_auth(request, request.cookies.get("activity_token"))
         except HTTPException:
-            return RedirectResponse("/login", status_code=303)
+            return _login_redirect(request)
     if not production and token and configured_token and secrets.compare_digest(token, configured_token):
         response = RedirectResponse(request.url.path, status_code=303)
         response.set_cookie("activity_token", token, httponly=True, samesite="lax")
@@ -96,7 +102,7 @@ def _recruitment_progress_page(request: Request, token: str | None) -> Response:
         try:
             require_recruitment_auth(request, request.cookies.get("activity_token"))
         except HTTPException:
-            return RedirectResponse("/login", status_code=303)
+            return _login_redirect(request)
     if not production and token and configured_token and secrets.compare_digest(token, configured_token):
         response = RedirectResponse(request.url.path, status_code=303)
         response.set_cookie("activity_token", token, httponly=True, samesite="lax")
