@@ -10,6 +10,7 @@ from urllib.parse import quote
 from fastapi import Cookie, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, RedirectResponse
 
+from . import debuglog
 from .main import DEFAULT_DB, STATIC_DIR, create_app
 from .recruitment import build_recruitment_router, scan_qq_mail
 from .recruitment_calendar import build_recruitment_calendar_router
@@ -21,6 +22,25 @@ from .recruitment_feishu_queue import build_recruitment_feishu_queue_router
 
 LOG = logging.getLogger("activitywatch.recruitment")
 app = create_app()
+
+
+@app.middleware("http")
+async def record_unhandled_debug_error(request: Request, call_next):
+    """补主 HTTP 日志的盲区：未处理异常过去只进 journalctl，不进 /devlog。"""
+    try:
+        return await call_next(request)
+    except Exception as exc:
+        if not request.url.path.startswith("/api/v1/debug/"):
+            debuglog.record(
+                "http",
+                method=request.method,
+                path=request.url.path,
+                status=500,
+                error=f"{type(exc).__name__}: {str(exc)[:500]}",
+                unhandled=True,
+                level="error",
+            )
+        raise
 
 
 def require_recruitment_auth(
@@ -142,13 +162,39 @@ async def _recruitment_poll_loop() -> None:
         try:
             if os.getenv("QQ_EMAIL") and os.getenv("QQ_EMAIL_AUTH_CODE"):
                 result = await asyncio.to_thread(scan_qq_mail, db_path)
+                debuglog.record(
+                    "event",
+                    module="mail",
+                    action="auto_scan",
+                    status="ok",
+                    imported=result.get("imported", 0),
+                    skipped=result.get("skipped", 0),
+                    ignored=result.get("ignored", 0),
+                    uncertain=result.get("uncertain", 0),
+                )
                 if result.get("imported") or result.get("uncertain"):
                     LOG.info("recruitment scan result=%s", result)
             else:
+                debuglog.record(
+                    "event",
+                    module="mail",
+                    action="auto_scan",
+                    status="skipped",
+                    detail="QQ 邮箱未配置",
+                    level="warn",
+                )
                 LOG.warning("recruitment auto scan skipped: QQ_EMAIL / QQ_EMAIL_AUTH_CODE not configured")
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except Exception as exc:
+            debuglog.record(
+                "event",
+                module="mail",
+                action="auto_scan",
+                status="error",
+                error=f"{type(exc).__name__}: {str(exc)[:500]}",
+                level="error",
+            )
             LOG.exception("recruitment background scan failed")
         await asyncio.sleep(interval)
 
@@ -157,6 +203,7 @@ async def _recruitment_poll_loop() -> None:
 async def start_recruitment_polling() -> None:
     if os.getenv("RECRUITMENT_AUTO_SCAN", "1") != "0":
         app.state.recruitment_poll_task = asyncio.create_task(_recruitment_poll_loop())
+        debuglog.record("event", module="mail", action="poller_start", status="ok")
 
 
 @app.on_event("shutdown")

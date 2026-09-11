@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
+from . import debuglog
 from .recruitment import _connect, _now_iso
 from .recruitment_calendar import _sync_one, init_recruitment_calendar_db
 from .recruitment_feishu import FIELD_ALIASES, ensure_recruitment_feishu_tables
@@ -55,7 +56,7 @@ def _ensure_bridge_columns(db_path: Path) -> None:
 
 
 def _field_value(fields: dict[str, Any], logical_key: str) -> Any:
-    for name in FIELD_ALIASES.get(logical_key, ()):  # canonical name is the first alias
+    for name in FIELD_ALIASES.get(logical_key, ()):
         if name in fields:
             return fields[name]
     return None
@@ -147,8 +148,25 @@ def _update_linked_google_safe(db_path: Path, item_id: int) -> None:
                 "SELECT calendar_event_id FROM recruitment_items WHERE id=?", (item_id,)
             ).fetchone()
         if row and row["calendar_event_id"]:
-            _sync_one(db_path, item_id)
-    except Exception as exc:  # local mutation must not fail because Google is temporarily unavailable
+            result = _sync_one(db_path, item_id)
+            debuglog.record(
+                "event",
+                module="calendar",
+                action="linked_google_resync",
+                status="ok",
+                item_id=item_id,
+                event_id=result.get("event_id"),
+            )
+    except Exception as exc:
+        debuglog.record(
+            "event",
+            module="calendar",
+            action="linked_google_resync",
+            status="error",
+            item_id=item_id,
+            error=f"{type(exc).__name__}: {str(exc)[:500]}",
+            level="error",
+        )
         LOG.warning("calendar bridge Google re-sync failed item=%s: %s", item_id, exc)
         try:
             with _connect(db_path) as connection:
@@ -283,7 +301,6 @@ def _sync_manual_proposal(connection, proposal, fields: dict[str, Any]) -> list[
     company = str(proposal["company"] or _field_value(fields, "company") or "")
     metadata = _metadata(fields)
 
-    # Metadata edits should also refresh already materialized calendar rows for this Feishu record.
     assignments = ["company=?", "updated_at=?"]
     params: list[Any] = [company, _now_iso()]
     for column, value in metadata.items():
@@ -326,6 +343,14 @@ def sync_feishu_proposal_to_calendar(db_path: Path, proposal_id: int) -> list[in
         try:
             fields = json.loads(proposal["fields_json"] or "{}")
         except json.JSONDecodeError:
+            debuglog.record(
+                "event",
+                module="bridge",
+                action="feishu_to_calendar",
+                status="invalid_payload",
+                proposal_id=proposal_id,
+                level="warn",
+            )
             LOG.warning("invalid fields_json for proposal=%s", proposal_id)
             return []
         if proposal["source"] == "mail":
@@ -333,6 +358,17 @@ def sync_feishu_proposal_to_calendar(db_path: Path, proposal_id: int) -> list[in
         else:
             item_ids = _sync_manual_proposal(connection, proposal, fields)
         connection.commit()
+        source = proposal["source"]
+    debuglog.record(
+        "event",
+        module="bridge",
+        action="feishu_to_calendar",
+        status="ok",
+        proposal_id=proposal_id,
+        source=source,
+        item_ids=item_ids,
+        item_count=len(item_ids),
+    )
     return item_ids
 
 
@@ -356,13 +392,29 @@ class RecruitmentCalendarBridgeMiddleware(BaseHTTPMiddleware):
             proposal_id = int(approve.group("proposal_id"))
             try:
                 item_ids = await asyncio.to_thread(sync_feishu_proposal_to_calendar, self.db_path, proposal_id)
-            except Exception:
+            except Exception as exc:
+                debuglog.record(
+                    "event",
+                    module="bridge",
+                    action="feishu_to_calendar",
+                    status="error",
+                    proposal_id=proposal_id,
+                    error=f"{type(exc).__name__}: {str(exc)[:500]}",
+                    level="error",
+                )
                 LOG.exception("failed to bridge Feishu proposal=%s into local calendar", proposal_id)
                 item_ids = []
             for item_id in item_ids:
                 asyncio.create_task(asyncio.to_thread(_update_linked_google_safe, self.db_path, item_id))
         elif local_item:
             item_id = int(local_item.group("item_id"))
+            debuglog.record(
+                "event",
+                module="bridge",
+                action="local_item_changed",
+                status="ok",
+                item_id=item_id,
+            )
             asyncio.create_task(asyncio.to_thread(_update_linked_google_safe, self.db_path, item_id))
 
         return response
