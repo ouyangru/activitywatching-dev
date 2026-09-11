@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -13,10 +14,25 @@ from .recruitment_feishu import (
 )
 
 
+ROUND_RE = re.compile(r"第?\s*([1-9一二三四五六七八九])\s*(?:轮)?\s*面")
+ROUND_NUMBER = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
+
+
 def _connect(path: Path) -> sqlite3.Connection:
     connection = sqlite3.connect(path)
     connection.row_factory = sqlite3.Row
     return connection
+
+
+def _infer_mail_stage(subject: str, context: str) -> str | None:
+    text = f"{subject}\n{context}".lower()
+    match = ROUND_RE.search(text)
+    if match:
+        value = match.group(1)
+        number = int(value) if value.isdigit() else ROUND_NUMBER.get(value, 0)
+        if number:
+            return f"{number}面"
+    return infer_recruitment_stage(subject, context)
 
 
 def backfill_recruitment_feishu_proposals(db_path: Path) -> dict[str, int]:
@@ -44,7 +60,7 @@ def backfill_recruitment_feishu_proposals(db_path: Path) -> dict[str, int]:
                     item.get("extraction_note") or "",
                 ) if part
             )
-            stage = infer_recruitment_stage(subject, context)
+            stage = _infer_mail_stage(subject, context)
             if not stage:
                 skipped += 1
                 continue
