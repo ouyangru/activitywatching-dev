@@ -18,6 +18,10 @@ from .recruitment_pipeline import build_mail_pipeline_fields
 
 ROUND_RE = re.compile(r"第?\s*([1-9一二三四五六七八九])\s*(?:轮)?\s*面")
 ROUND_NUMBER = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
+APPLICATION_STAGE_HINTS = (
+    "投递成功", "申请成功", "网申成功", "已投递", "简历已收到",
+    "application received", "application submitted", "application confirmation",
+)
 
 
 def _connect(path: Path) -> sqlite3.Connection:
@@ -28,6 +32,8 @@ def _connect(path: Path) -> sqlite3.Connection:
 
 def _infer_mail_stage(subject: str, context: str) -> str | None:
     text = f"{subject}\n{context}".lower()
+    if any(hint.lower() in text for hint in APPLICATION_STAGE_HINTS):
+        return "已投递"
     match = ROUND_RE.search(text)
     if match:
         value = match.group(1)
