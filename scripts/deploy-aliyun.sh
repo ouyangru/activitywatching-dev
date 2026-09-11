@@ -27,6 +27,8 @@ BRANCH="main"
 HEALTH_PATH="/api/v1/health"
 HEALTH_TIMEOUT=90
 GIT_USER="admin"
+OLD_COMMIT=""
+REMOTE_OLD_COMMIT=""
 
 say() { printf '\n==> %s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
@@ -52,8 +54,8 @@ say "同步 origin/$BRANCH"
 git fetch origin "$BRANCH"
 
 if [ "$SELF_DEPLOY" -eq 1 ]; then
+  # 回滚版本只保存在当前 shell 变量里，不写共享 /tmp，避免 root/admin 权限冲突。
   OLD_COMMIT="$(git rev-parse HEAD)"
-  printf '%s' "$OLD_COMMIT" > /tmp/aw-deploy-old-commit
   say "检测到当前就在生产服务器，跳过 git push，直接更新到 origin/$BRANCH"
   git reset --hard "origin/$BRANCH"
 else
@@ -113,11 +115,11 @@ upgrade_current_server() {
 if [ "$SELF_DEPLOY" -eq 1 ]; then
   upgrade_current_server
 else
-  # 开发机模式：远端记录旧版本 -> 拉取 -> 依赖 -> 升级配置 -> 重启。
+  # 开发机模式：先把远端旧版本读回当前 shell，失败时直接使用变量回滚。
+  REMOTE_OLD_COMMIT="$(ssh "$SERVER" "cd $APP_DIR && git rev-parse HEAD")"
   say "服务器拉取最新代码并重启服务"
   ssh "$SERVER" "set -e
     cd $APP_DIR
-    git rev-parse HEAD | tr -d '\n' > /tmp/aw-deploy-old-commit
     sudo -u $GIT_USER git fetch origin
     sudo -u $GIT_USER git reset --hard origin/$BRANCH
     sudo -u $GIT_USER -H $APP_DIR/.venv/bin/pip install -q -r backend/requirements.txt
@@ -153,16 +155,16 @@ until curl -fsS -m 5 "$BASE_URL$HEALTH_PATH" >/dev/null 2>&1; do
   if [ "$SECONDS" -ge "$deadline" ]; then
     say "健康检查失败，自动回滚"
     if [ "$SELF_DEPLOY" -eq 1 ]; then
-      OLD_COMMIT="$(cat /tmp/aw-deploy-old-commit)"
       git reset --hard "$OLD_COMMIT" || true
       sudo systemctl restart "$SERVICE" || true
       sudo journalctl -u "$SERVICE" -n 30 --no-pager || true
+      ROLLBACK_COMMIT="$OLD_COMMIT"
     else
-      OLD_COMMIT="$(ssh "$SERVER" "cat /tmp/aw-deploy-old-commit")"
-      ssh "$SERVER" "cd $APP_DIR && sudo -u $GIT_USER git reset --hard $OLD_COMMIT && systemctl restart $SERVICE" || true
+      ssh "$SERVER" "cd $APP_DIR && sudo -u $GIT_USER git reset --hard $REMOTE_OLD_COMMIT && systemctl restart $SERVICE" || true
       ssh "$SERVER" "journalctl -u $SERVICE -n 30 --no-pager" || true
+      ROLLBACK_COMMIT="$REMOTE_OLD_COMMIT"
     fi
-    die "部署失败，已回滚到 $OLD_COMMIT，请根据上方日志排查"
+    die "部署失败，已回滚到 $ROLLBACK_COMMIT，请根据上方日志排查"
   fi
   sleep 3
 done
