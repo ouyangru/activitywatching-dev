@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0d1b1a">
+  <title>行迹 · 秋招事项</title>
+  <link rel="stylesheet" href="/static/styles.css?v=20260909-2">
+  <link rel="stylesheet" href="/static/design.css?v=20260909-4">
+  <link rel="stylesheet" href="/static/recruitment.css?v=20260911-1">
+</head>
+<body>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+  <main class="shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="行迹首页"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>行迹</span></a>
+      <nav class="topbar-nav">
+        <a class="nav-link" href="/">总览</a>
+        <a class="nav-link" href="/daily">日报</a>
+        <a class="nav-link" href="/compare">多日对比</a>
+        <a class="nav-link is-active" href="/recruitment">秋招</a>
+        <a class="nav-link" href="/devlog">开发</a>
+      </nav>
+    </header>
+
+    <section class="hero recruitment-hero">
+      <div>
+        <p class="eyebrow">RECRUITMENT CONTROL CENTER</p>
+        <h1>秋招事项</h1>
+        <p class="hero-meta">QQ 邮箱负责采集，网页负责确认与管理；Google Calendar 只作为提醒出口。</p>
+      </div>
+      <div class="recruitment-actions">
+        <button id="scanMailButton" class="ghost-button" type="button">立即检查 QQ 邮箱</button>
+        <button id="refreshRecruitmentButton" class="ghost-button" type="button">刷新</button>
+      </div>
+    </section>
+
+    <p id="recruitmentState" class="page-state" role="status" aria-live="polite"></p>
+
+    <section class="stats recruitment-stats" aria-label="秋招概览">
+      <article><span>今天截止</span><strong id="summaryToday">0</strong></article>
+      <article><span>未来 3 天</span><strong id="summaryThreeDays">0</strong></article>
+      <article><span>待确认</span><strong id="summaryUncertain">0</strong></article>
+      <article><span>最近事项</span><strong id="summaryNext">暂无</strong></article>
+    </section>
+
+    <section class="panel recruitment-toolbar" aria-label="筛选秋招事项">
+      <div class="filter-group">
+        <button class="view-switch-button is-active" type="button" data-recruitment-filter="active">待处理</button>
+        <button class="view-switch-button" type="button" data-recruitment-filter="uncertain">待确认</button>
+        <button class="view-switch-button" type="button" data-recruitment-filter="done">已完成</button>
+        <button class="view-switch-button" type="button" data-recruitment-filter="all">全部</button>
+      </div>
+    </section>
+
+    <div class="recruitment-layout">
+      <section class="panel recruitment-list-panel" aria-labelledby="recruitmentListTitle">
+        <div class="panel-heading">
+          <div><p class="eyebrow">TASKS</p><h2 id="recruitmentListTitle">待办事项</h2></div>
+        </div>
+        <div id="recruitmentList" class="recruitment-list" aria-live="polite"></div>
+      </section>
+
+      <section class="panel recruitment-log-panel" aria-labelledby="mailLogTitle">
+        <div class="panel-heading">
+          <div><p class="eyebrow">MAIL TRACE</p><h2 id="mailLogTitle">邮件处理记录</h2></div>
+        </div>
+        <div id="mailLogList" class="mail-log-list"></div>
+      </section>
+    </div>
+  </main>
+
+  <dialog id="editRecruitmentDialog" class="correction-dialog">
+    <form id="editRecruitmentForm" method="dialog">
+      <p class="eyebrow">CONFIRM ITEM</p>
+      <h3>确认秋招事项</h3>
+      <input id="editRecruitmentId" type="hidden">
+      <label>公司
+        <input id="editCompany" class="recruitment-input" type="text" maxlength="128">
+      </label>
+      <label>标题
+        <input id="editTitle" class="recruitment-input" type="text" maxlength="512">
+      </label>
+      <label>事项类型
+        <select id="editType" class="device-filter">
+          <option value="written_test">笔试</option>
+          <option value="assessment">测评</option>
+          <option value="interview">面试</option>
+          <option value="other">其他</option>
+        </select>
+      </label>
+      <label>模式
+        <select id="editMode" class="device-filter">
+          <option value="deadline">截止事项</option>
+          <option value="fixed_time">固定时间</option>
+          <option value="uncertain">待确认</option>
+        </select>
+      </label>
+      <label>截止时间 / 日期
+        <input id="editDeadline" class="recruitment-input" type="text" placeholder="2026-09-15 或 2026-09-15T23:59:00+08:00">
+      </label>
+      <label>开始时间
+        <input id="editStart" class="recruitment-input" type="text" placeholder="2026-09-15T19:00:00+08:00">
+      </label>
+      <label>链接
+        <input id="editUrl" class="recruitment-input" type="url" maxlength="2048">
+      </label>
+      <div class="correction-actions">
+        <button id="cancelRecruitmentEdit" class="ghost-button" type="button">取消</button>
+        <button class="ghost-button correction-save" type="submit">保存并确认</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="/static/ui.js?v=20260910-2" defer></script>
+  <script src="/static/recruitment.js?v=20260911-1" defer></script>
+</body>
+</html>

@@ -20,7 +20,21 @@ def configure():
     subprocess.run(["chown", "activity-timeline:activity-timeline", "/var/lib/activity-timeline"], check=True)
     env = pathlib.Path("/etc/activity-timeline.env")
     if not env.exists():
-        write(str(env), "ACTIVITYWATCH_ENV=production\nACTIVITYWATCH_TIMEZONE=Asia/Shanghai\nACTIVITYWATCH_DB_PATH=/var/lib/activity-timeline/activitywatch.db\nACTIVITYWATCH_API_TOKEN=" + secrets.token_urlsafe(48) + "\n", 0o600)
+        write(
+            str(env),
+            "ACTIVITYWATCH_ENV=production\n"
+            "ACTIVITYWATCH_TIMEZONE=Asia/Shanghai\n"
+            "ACTIVITYWATCH_DB_PATH=/var/lib/activity-timeline/activitywatch.db\n"
+            "ACTIVITYWATCH_API_TOKEN=" + secrets.token_urlsafe(48) + "\n"
+            "QQ_EMAIL=\n"
+            "QQ_EMAIL_AUTH_CODE=\n"
+            "QQ_IMAP_HOST=imap.qq.com\n"
+            "QQ_IMAP_PORT=993\n"
+            "QQ_IMAP_MAILBOX=INBOX\n"
+            "RECRUITMENT_AUTO_SCAN=1\n"
+            "RECRUITMENT_SCAN_INTERVAL_SECONDS=600\n",
+            0o600,
+        )
     write("/etc/systemd/system/activity-timeline.service", """[Unit]
 Description=Activity Timeline API
 After=network.target
@@ -29,7 +43,7 @@ User=activity-timeline
 Group=activity-timeline
 WorkingDirectory=/opt/activity-timeline
 EnvironmentFile=/etc/activity-timeline.env
-ExecStart=/opt/activity-timeline/.venv/bin/uvicorn backend.app.main:app --host 127.0.0.1 --port 8765 --workers 1 --no-access-log
+ExecStart=/opt/activity-timeline/.venv/bin/uvicorn backend.app.recruitment_entry:app --host 127.0.0.1 --port 8765 --workers 1 --no-access-log
 Restart=always
 RestartSec=5
 NoNewPrivileges=true

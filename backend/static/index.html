@@ -23,11 +23,28 @@
         <a class="nav-link is-active" href="/" data-day-link>总览</a>
         <a class="nav-link" href="/daily" data-day-link>日报</a>
         <a class="nav-link" href="/compare" data-day-link>多日对比</a>
+        <a class="nav-link" href="/recruitment">秋招</a>
         <a class="nav-link" href="/devlog">开发</a>
       </nav>
       <div class="live-pill"><span></span> <b id="connectionLabel">正在连接</b></div>
       <time id="todayLabel"></time>
     </header>
+
+    <section class="panel recruitment-reminder" aria-labelledby="recruitmentReminderTitle">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">RECRUITMENT</p>
+          <h2 id="recruitmentReminderTitle">秋招提醒</h2>
+        </div>
+        <a class="nav-link" href="/recruitment">查看全部 →</a>
+      </div>
+      <div class="stats" id="recruitmentReminderStats">
+        <article><span>今天截止</span><strong id="recruitmentTodayCount">—</strong></article>
+        <article><span>未来 3 天</span><strong id="recruitmentThreeDayCount">—</strong></article>
+        <article><span>待确认</span><strong id="recruitmentUncertainCount">—</strong></article>
+        <article><span>最近事项</span><strong id="recruitmentNextItem">—</strong></article>
+      </div>
+    </section>
 
     <div class="page-state-row"><p id="pageState" class="page-state" role="status" aria-live="polite"></p><button id="retryDashboard" class="ghost-button" type="button">刷新 / 重试</button></div>
     <section class="hero" aria-labelledby="currentTitle">
@@ -136,6 +153,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js"></script>
   <script src="/static/ui.js?v=20260910-2" defer></script>
+  <script src="/static/recruitment-home.js?v=20260911-1" defer></script>
   <script src="/static/app.js?v=20260910-2" defer></script>
 </body>
 </html>
