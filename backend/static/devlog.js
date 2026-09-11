@@ -9,7 +9,7 @@ window.DevLog = (() => {
     agent_input:'Agent 输入', agent_output:'Agent 输出', event:'模块事件'
   };
   const MODULE_LABELS = {
-    activity:'活动分析', recruitment:'秋招事项', feishu:'招聘进度', calendar:'日历',
+    activity:'活动分析', frontend:'前端', recruitment:'秋招事项', feishu:'招聘进度', calendar:'日历',
     mail:'邮件扫描', bridge:'招聘↔日历', agent:'Agent', ingest:'采集', system:'系统'
   };
 
@@ -35,7 +35,7 @@ window.DevLog = (() => {
       }
       case 'agent_input': return `${entry.llm_kind || ''} · ${entry.model || ''} · 请求 ${entry.request_id || ''}`;
       case 'agent_output': return `${entry.llm_kind || ''} · ${entry.status || ''}${entry.elapsed_ms != null ? ` · ${entry.elapsed_ms}ms` : ''}${entry.error ? ` · ${entry.error}` : ''}`;
-      case 'event': return `${entry.action || '事件'}${entry.status ? ` · ${entry.status}` : ''}${entry.detail ? ` · ${entry.detail}` : ''}`;
+      case 'event': return `${entry.action || '事件'}${entry.status ? ` · ${entry.status}` : ''}${entry.detail ? ` · ${entry.detail}` : ''}${entry.error ? ` · ${entry.error}` : ''}`;
       default: return entry.action || entry.detail || '';
     }
   }
@@ -102,7 +102,7 @@ window.DevLog = (() => {
 
     async function fetchEntries() {
       if (enabled === false) return;
-      const url = `/api/v1/debug/logs?after_id=${latestId}&limit=200` + (kind ? `&kind=${encodeURIComponent(kind)}` : '');
+      const url = `/api/v1/debug/logs?after_id=${latestId}&limit=200`;
       const data = await (window.ActivityUI ? ActivityUI.json(url) : fetch(url).then(r => r.json()));
       if (!data.enabled) {
         enabled = false;
@@ -124,7 +124,8 @@ window.DevLog = (() => {
 
     function visibleEntries() {
       return entries.filter(entry =>
-        (!module || entry.module === module)
+        (!kind || entry.kind === kind)
+        && (!module || entry.module === module)
         && (!onlyAbnormal || isAbnormal(entry))
         && (!onlySlow || isSlow(entry))
         && matchesSearch(entry, query)
@@ -134,7 +135,7 @@ window.DevLog = (() => {
     function stateLine() {
       const errors = entries.filter(e => e.level === 'error').length;
       const warnings = entries.filter(e => e.level === 'warn').length;
-      state.innerHTML = `共 ${entries.length} 条 · <b class="devlog-count-error">异常 ${errors}</b> · <b class="devlog-count-warn">警告 ${warnings}</b>${module ? ` · 模块 ${escape(MODULE_LABELS[module] || module)}` : ''}${query || onlyAbnormal || onlySlow ? ` · 当前显示 ${visibleEntries().length} 条` : ''}（id 至 ${latestId}）`;
+      state.innerHTML = `共 ${entries.length} 条 · <b class="devlog-count-error">异常 ${errors}</b> · <b class="devlog-count-warn">警告 ${warnings}</b>${module ? ` · 模块 ${escape(MODULE_LABELS[module] || module)}` : ''}${kind || query || onlyAbnormal || onlySlow ? ` · 当前显示 ${visibleEntries().length} 条` : ''}（id 至 ${latestId}）`;
     }
 
     function render() {
@@ -167,7 +168,8 @@ window.DevLog = (() => {
     $('devKindBar').querySelectorAll('button').forEach(button => {
       button.onclick = () => {
         $('devKindBar').querySelectorAll('button').forEach(b => b.classList.toggle('is-active', b === button));
-        kind = button.dataset.kind; entries = []; open = new Set(); latestId = 0; render(); refresh();
+        kind = button.dataset.kind;
+        render();
       };
     });
     $('devModuleBar').querySelectorAll('button').forEach(button => {

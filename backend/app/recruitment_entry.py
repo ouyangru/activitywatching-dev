@@ -5,7 +5,7 @@ import logging
 import os
 import secrets
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from fastapi import Cookie, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, RedirectResponse
@@ -26,9 +26,13 @@ app = create_app()
 
 @app.middleware("http")
 async def record_unhandled_debug_error(request: Request, call_next):
-    """补主 HTTP 日志的盲区：未处理异常过去只进 journalctl，不进 /devlog。"""
+    """补主 HTTP 日志盲区，并允许 Personal Hub 的同源 iframe。"""
     try:
-        return await call_next(request)
+        response = await call_next(request)
+        # create_app 默认使用 DENY；Personal Hub 需要嵌入同源页面。
+        # SAMEORIGIN 仍然阻止第三方站点 framing。
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        return response
     except Exception as exc:
         if not request.url.path.startswith("/api/v1/debug/"):
             debuglog.record(
@@ -59,6 +63,52 @@ def require_recruitment_auth(
         if candidate
     ):
         raise HTTPException(status_code=401, detail="authentication required")
+
+
+def _safe_path(value: object) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = urlsplit(raw)
+        return (parsed.path or raw.split("?", 1)[0])[:500]
+    except ValueError:
+        return raw.split("?", 1)[0][:500]
+
+
+@app.post("/api/v1/debug/client-error")
+async def debug_client_error(
+    request: Request,
+    activity_token: str | None = Cookie(default=None),
+) -> dict[str, object]:
+    """接收浏览器端异常；只记录脱敏路径/错误文本，不记录 query、token 或页面内容。"""
+    require_recruitment_auth(request, activity_token)
+    if not debuglog.debug_view_enabled():
+        return {"recorded": False}
+    try:
+        payload = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="invalid client error payload") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="invalid client error payload")
+
+    message = str(payload.get("message") or payload.get("error") or "client error").strip()[:1200]
+    action = str(payload.get("action") or "client_error").strip()[:120]
+    stack = str(payload.get("stack") or "").strip()[:5000]
+    debuglog.record(
+        "event",
+        module="frontend",
+        action=action,
+        status="error",
+        level="error",
+        error=message,
+        page=_safe_path(payload.get("page")),
+        source=_safe_path(payload.get("source")),
+        line=payload.get("line"),
+        column=payload.get("column"),
+        stack=stack,
+    )
+    return {"recorded": True}
 
 
 db_path = Path(os.getenv("ACTIVITYWATCH_DB_PATH", str(DEFAULT_DB)))

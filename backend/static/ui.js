@@ -1,5 +1,6 @@
 /* Shared dates, chart lifecycle and interval correction for all activity views. */
 window.ActivityUI = (() => {
+  if (window.parent !== window) window.__PERSONAL_HUB_EMBEDDED__ = true;
   const colors = { 学习:'#82cedd', 工作:'#92a3d9', 娱乐:'#d6ad79', 空闲:'#8d9ba9', 其他:'#b3a0ce', 无设备记录:'#45515e', 睡眠:'#858ac4', 运动:'#78b6a1', 出游:'#c6bc80', 用餐:'#c4937c', 通勤:'#779fb7', 休息:'#aa9eb6', 家务:'#99ad7b', 生活事务:'#99ad7b' };
   const editable = Object.keys(colors).filter(x => !['无设备记录','生活事务'].includes(x));
   const charts = new Map();
@@ -13,7 +14,35 @@ window.ActivityUI = (() => {
   const duration = value => { const s=Math.max(0,Number(value)||0); if(s<60)return `${Math.round(s)}秒`; const m=Math.round(s/60); return m>=60 ? `${Math.floor(m/60)}h${m%60 ? ` ${m%60}min` : ''}` : `${m}min`; };
   const clock = value => new Intl.DateTimeFormat('zh-CN',{timeZone:timezone,hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(value));
   const platformLabel = value => value === 'android' ? 'Android' : value === 'windows' ? 'Windows' : '无设备';
-  function toast(message) { const el=document.getElementById('toast'); if(!el)return; el.textContent=message; el.classList.add('visible'); setTimeout(()=>el.classList.remove('visible'),2200); }
+  const errorLike = value => /(failed|failure|invalid|error|异常|失败|不可用|无法)/i.test(String(value || ''));
+  const safePath = value => {
+    const raw=String(value || '').trim();
+    if(!raw)return '';
+    try { return new URL(raw, document.baseURI).pathname; }
+    catch { return raw.split('?',1)[0].slice(0,500); }
+  };
+  function reportError(error, action='client_error', details={}) {
+    const message = error instanceof Error ? error.message : String(error || 'client error');
+    const stack = error instanceof Error ? error.stack || '' : String(details.stack || '');
+    fetch('/api/v1/debug/client-error', {
+      method:'POST', credentials:'same-origin', keepalive:true,
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        action,
+        message:message.slice(0,1200),
+        stack:stack.slice(0,5000),
+        page:location.pathname,
+        source:safePath(details.source || ''),
+        line:details.line || null,
+        column:details.column || null,
+      }),
+    }).catch(()=>{});
+  }
+  function toast(message) {
+    const el=document.getElementById('toast');
+    if(el){el.textContent=message;el.classList.add('visible');setTimeout(()=>el.classList.remove('visible'),2200);}
+    if(errorLike(message)) reportError(message,'toast_error');
+  }
   function rankingRows(items,emptyText) {
     return items.length ? items.map(x=>`<li class="ranking-row">${x.title!=null?`<span class="ranking-name" title="${escape(x.title)}">`:'<span class="ranking-name">'}${escape(x.name)}</span><span class="ranking-bar"><i style="width:${x.width}%"></i></span><b class="ranking-value">${escape(x.value)}</b></li>`).join('') : `<li class="ranking-empty">${escape(emptyText)}</li>`;
   }
@@ -23,7 +52,7 @@ window.ActivityUI = (() => {
     return response.json();
   }
   function setTimezone(value) { if(value)timezone=value; }
-  const ready = json('/api/v1/timeline/today').then(data=>{timezone=data.timezone || timezone;return data;}).catch(()=>null);
+  const ready = json('/api/v1/timeline/today').then(data=>{timezone=data.timezone || timezone;return data;}).catch(error=>{reportError(error,'initial_timeline_load');return null;});
   function initialDay() {
     const d=new URLSearchParams(location.search).get('day');
     // Consume the navigation-only day param so a refresh always lands on today.
@@ -56,6 +85,8 @@ window.ActivityUI = (() => {
   }
   function flash(el){if(!el)return;el.classList.remove('is-revealed');void el.offsetWidth;el.classList.add('is-revealed');}
   window.addEventListener('resize',()=>charts.forEach(c=>c.resize()));
+  window.addEventListener('error',event=>reportError(event.error || event.message,'window_error',{source:event.filename,line:event.lineno,column:event.colno,stack:event.error?.stack || ''}));
+  window.addEventListener('unhandledrejection',event=>reportError(event.reason || 'Unhandled promise rejection','unhandled_rejection',{stack:event.reason?.stack || ''}));
   reduced.addEventListener('change',()=>charts.forEach(c=>c.setOption({animation:!reduced.matches})));
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)charts.forEach(c=>c.resize());});
   let intervalDialog;
@@ -65,7 +96,7 @@ window.ActivityUI = (() => {
     const local=value=>{const d=new Date(value);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;};
     form.elements.start.value=local(segment.start_time);form.elements.end.value=local(segment.end_time);form.elements.category.value=editable.includes(segment.category)?segment.category:'学习';
     form.querySelector('[data-local-zone]').textContent=`填写时间使用本机时区 ${Intl.DateTimeFormat().resolvedOptions().timeZone}，保存后自动换算。`;
-    form.onsubmit=async event=>{event.preventDefault();const button=form.querySelector('[type=submit]');button.disabled=true;try{const start=new Date(form.elements.start.value),end=new Date(form.elements.end.value);if(!(end>start)||end>new Date()||end-start>48*3600000)throw new Error('结束必须晚于开始，不能在未来，最长 48 小时');await json('/api/v1/offline-activities',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({start_time:start.toISOString(),end_time:end.toISOString(),category:form.elements.category.value,note:form.elements.note.value,remember:form.elements.remember.checked})});intervalDialog.close();await onSaved();}catch(error){form.querySelector('.form-error').textContent=error.message;}finally{button.disabled=false;}};
+    form.onsubmit=async event=>{event.preventDefault();const button=form.querySelector('[type=submit]');button.disabled=true;try{const start=new Date(form.elements.start.value),end=new Date(form.elements.end.value);if(!(end>start)||end>new Date()||end-start>48*3600000)throw new Error('结束必须晚于开始，不能在未来，最长 48 小时');await json('/api/v1/offline-activities',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({start_time:start.toISOString(),end_time:end.toISOString(),category:form.elements.category.value,note:form.elements.note.value,remember:form.elements.remember.checked})});intervalDialog.close();await onSaved();}catch(error){reportError(error,'correct_interval');form.querySelector('.form-error').textContent=error.message;}finally{button.disabled=false;}};
     intervalDialog.showModal();
   }
   function reflection(container,segments,insights,onSelect) {
@@ -80,5 +111,5 @@ window.ActivityUI = (() => {
     target.innerHTML=rows.length?rows.map((x,i)=>`<article class="reflection-item"><span class="reflection-number">0${i+1}</span><div><h3>${escape(x.title)}</h3><p>${escape(x.text)}</p><button class="ghost-button" data-evidence="${i}">查看 ${clock(x.segment.start_time_local)}—${clock(x.segment.end_time_local)} 的记录</button></div></article>`).join(''):'<p class="empty">尚无足够活动记录，暂不生成复盘建议。</p>';
     target.querySelectorAll('[data-evidence]').forEach(b=>b.onclick=()=>onSelect(rows[Number(b.dataset.evidence)].segment));
   }
-  return {colors,editable,ready,setTimezone,initialDay,today:dayKey,validDay,shift,duration,clock,platformLabel,toast,rankingRows,escape,json,chart,pie,disposeWithin,bindDate,syncDay,flash,correctInterval,reflection,get timezone(){return timezone;}};
+  return {colors,editable,ready,setTimezone,initialDay,today:dayKey,validDay,shift,duration,clock,platformLabel,toast,rankingRows,escape,json,reportError,chart,pie,disposeWithin,bindDate,syncDay,flash,correctInterval,reflection,get timezone(){return timezone;}};
 })();

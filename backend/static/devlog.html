@@ -75,7 +75,7 @@
 <div>
 <p class="eyebrow">DEV VIEW</p>
 <h1>开发者视图 · 调试日志流</h1>
-<p class="hero-meta">按业务模块和日志类型筛选；4xx/5xx、异常和慢请求会直接高亮。日志仅保存在内存中，重启清空。</p>
+<p class="hero-meta">按业务模块和日志类型筛选；后端 4xx/5xx、浏览器异常和慢请求都会直接高亮。日志仅保存在内存中，重启清空。</p>
 </div>
 </section>
 
@@ -87,6 +87,7 @@
     <div class="devlog-kinds" id="devModuleBar" aria-label="业务模块">
       <button type="button" class="is-active" data-module="">全部</button>
       <button type="button" data-module="activity">活动分析</button>
+      <button type="button" data-module="frontend">前端</button>
       <button type="button" data-module="recruitment">秋招事项</button>
       <button type="button" data-module="feishu">招聘进度</button>
       <button type="button" data-module="calendar">日历</button>
@@ -106,6 +107,7 @@
       <button type="button" data-kind="agent_inject">记忆注入</button>
       <button type="button" data-kind="agent_input">Agent 输入</button>
       <button type="button" data-kind="agent_output">Agent 输出</button>
+      <button type="button" data-kind="event">模块事件</button>
     </div>
   </div>
   <div class="devlog-filter-row">
@@ -124,10 +126,10 @@
 <div class="panel-heading"><h2>日志流</h2><span class="timezone-note">新在前 · 点击条目展开结构化详情</span></div>
 <div id="devStream" class="devlog-stream"><p class="devlog-empty">加载中…</p></div>
 </section>
-<p class="devlog-note" id="devNotice">HTTP 日志不记录 query string；飞书 token、App Secret、邮箱正文等敏感内容不会进入该日志流。</p>
+<p class="devlog-note" id="devNotice">HTTP 日志不记录 query string；浏览器异常只记录错误、脚本路径和栈；飞书 token、App Secret、邮箱正文等敏感内容不会进入该日志流。</p>
 </main>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
-<script src="/static/ui.js?v=20260910-1" defer></script>
-<script src="/static/devlog.js?v=20260912-1" defer></script>
+<script src="/static/ui.js?v=20260912-3" defer></script>
+<script src="/static/devlog.js?v=20260912-3" defer></script>
 </body>
 </html>
