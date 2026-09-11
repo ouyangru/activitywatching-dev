@@ -56,6 +56,25 @@
   border-style: dashed;
 }
 
+.recruitment-card.is-done,
+.recruitment-card.is-cancelled {
+  opacity: .72;
+}
+
+.recruitment-card.is-done {
+  border-color: #3e5b52;
+}
+
+.recruitment-card.is-cancelled {
+  border-color: #57474b;
+  background: #192026;
+}
+
+.recruitment-card.is-cancelled .recruitment-card-title h3,
+.recruitment-card.is-cancelled .recruitment-time strong {
+  color: #aeb8c0;
+}
+
 .recruitment-card-head {
   display: flex;
   gap: 14px;
@@ -106,6 +125,18 @@
   background: #294351;
 }
 
+.recruitment-badge.status-done {
+  color: #b9d8ca;
+  border-color: #49665a;
+  background: #243b33;
+}
+
+.recruitment-badge.status-cancelled {
+  color: #c9b8bc;
+  border-color: #665158;
+  background: #372a2f;
+}
+
 .recruitment-time {
   font-variant-numeric: tabular-nums;
   text-align: right;
@@ -138,6 +169,15 @@
 
 .recruitment-card-actions a {
   text-decoration: none;
+}
+
+.recruitment-cancel-button {
+  color: #d5b7bd;
+  border-color: #655059;
+}
+
+.recruitment-cancel-button:hover {
+  background: #33272c;
 }
 
 .recruitment-input {
