@@ -11,7 +11,10 @@ document.getElementById("loginForm").addEventListener("submit", async (event) =>
       body: JSON.stringify({ token: document.getElementById("token").value }),
     });
     if (!response.ok) throw new Error(response.status === 401 ? "令牌不正确，请重新输入。" : "登录失败，请稍后重试。");
-    window.location.replace("/mobile");
+
+    const requested = new URLSearchParams(window.location.search).get("next") || "";
+    const nextPath = requested.startsWith("/") && !requested.startsWith("//") ? requested : "/mobile";
+    window.location.replace(nextPath);
   } catch (failure) {
     error.textContent = failure.message || "连接失败，请检查网络。";
   } finally {
