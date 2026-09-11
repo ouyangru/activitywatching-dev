@@ -8,13 +8,11 @@
   <link rel="stylesheet" href="/static/styles.css?v=20260909-2">
   <link rel="stylesheet" href="/static/design.css?v=20260909-4">
   <link rel="stylesheet" href="/static/recruitment.css?v=20260911-3">
-  <link rel="stylesheet" href="/static/recruitment-feishu.css?v=20260911-1">
+  <link rel="stylesheet" href="/static/recruitment-feishu.css?v=20260911-2">
 </head>
-<body>
-  <div class="ambient ambient-one"></div>
-  <div class="ambient ambient-two"></div>
-  <main class="shell">
-    <header class="topbar">
+<body class="feishu-document-page">
+  <main class="shell feishu-document-shell">
+    <header class="topbar feishu-document-topbar">
       <a class="brand" href="/" aria-label="行迹首页"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>行迹</span></a>
       <nav class="topbar-nav">
         <a class="nav-link" href="/hub">总控台</a>
@@ -24,56 +22,69 @@
       </nav>
     </header>
 
-    <section class="hero recruitment-hero feishu-hero">
-      <div>
-        <p class="eyebrow">RECRUITMENT PIPELINE · FEISHU</p>
-        <h1>招聘进度</h1>
-        <p class="hero-meta">飞书多维表格是主数据源。网页只读取同一张表；所有修改先进入审核队列，只有点击“批准写入”后才会真正更新飞书。</p>
+    <section class="feishu-document-header">
+      <div class="feishu-document-title-row">
+        <div>
+          <p class="feishu-document-kicker">秋招 / 招聘进度</p>
+          <h1>招聘进度总表</h1>
+          <p class="feishu-document-description">与飞书多维表格保持同一份数据。网页修改和邮件识别结果都会先进入审核区，确认后才写回飞书。</p>
+        </div>
+        <div class="recruitment-actions feishu-document-actions">
+          <a id="feishuSourceLink" class="ghost-button" href="#" target="_blank" rel="noopener noreferrer" hidden>在飞书中打开</a>
+          <button id="feishuRefreshButton" class="ghost-button" type="button">刷新</button>
+        </div>
       </div>
-      <div class="recruitment-actions">
-        <a id="feishuSourceLink" class="ghost-button" href="#" target="_blank" rel="noopener noreferrer" hidden>打开飞书原表</a>
-        <button id="feishuRefreshButton" class="ghost-button" type="button">刷新飞书</button>
+
+      <div class="feishu-document-statusbar" aria-label="飞书招聘进度概览">
+        <span class="feishu-status-item"><b id="feishuRecordCount">—</b> 条记录</span>
+        <span class="feishu-status-divider"></span>
+        <a class="feishu-status-item feishu-status-link" href="#reviewQueue"><b id="feishuPendingCount">—</b> 条待审核</a>
+        <span class="feishu-status-divider"></span>
+        <span class="feishu-status-item"><b id="feishuAppliedCount">—</b> 条已写入</span>
+        <span class="feishu-status-divider"></span>
+        <span class="feishu-safe-badge">先审后写</span>
+        <span id="feishuState" class="feishu-connection-state" role="status" aria-live="polite">正在读取飞书配置…</span>
       </div>
     </section>
 
-    <section class="stats recruitment-stats feishu-stats" aria-label="飞书招聘进度概览">
-      <article><span>飞书记录</span><strong id="feishuRecordCount">—</strong></article>
-      <article><span>待审核</span><strong id="feishuPendingCount">—</strong></article>
-      <article><span>已写入</span><strong id="feishuAppliedCount">—</strong></article>
-      <article><span>同步策略</span><strong class="feishu-policy">先审后写</strong></article>
+    <nav class="feishu-viewbar" aria-label="招聘进度页面目录">
+      <a class="is-active" href="#recruitmentTable">招聘总表</a>
+      <a href="#reviewQueue">待审核变更</a>
+      <a href="#fieldMapping">字段映射</a>
+    </nav>
+
+    <section id="recruitmentTable" class="feishu-document-section feishu-record-section" aria-labelledby="recordTitle">
+      <div class="feishu-section-heading">
+        <div>
+          <h2 id="recordTitle">招聘总表</h2>
+          <p>直接查看飞书中的公司、阶段和后续节点。点击“修改”只会生成审核建议。</p>
+        </div>
+      </div>
+      <div id="feishuTableShell" class="feishu-table-shell">
+        <div class="empty-recruitment">正在读取飞书记录…</div>
+      </div>
     </section>
 
-    <p id="feishuState" class="page-state" role="status" aria-live="polite">正在读取飞书配置…</p>
-
-    <section class="panel feishu-mapping-panel" aria-labelledby="mappingTitle">
-      <div class="panel-heading">
-        <div><p class="eyebrow">FIELD MAPPING</p><h2 id="mappingTitle">字段映射</h2></div>
-        <span class="recruitment-badge emphasis">只读检查</span>
+    <section id="reviewQueue" class="feishu-document-section feishu-review-section" aria-labelledby="reviewTitle">
+      <div class="feishu-section-heading feishu-review-heading">
+        <div>
+          <h2 id="reviewTitle">待审核变更</h2>
+          <p>邮件识别和网页修改都先集中到这里，对比修改前后内容后再决定是否写回。</p>
+        </div>
+        <button id="feishuBackfillButton" class="ghost-button" type="button">从邮件生成建议</button>
       </div>
+      <div id="feishuProposalList" class="feishu-proposal-list">
+        <div class="empty-recruitment">正在读取审核队列…</div>
+      </div>
+    </section>
+
+    <details id="fieldMapping" class="feishu-document-section feishu-mapping-section">
+      <summary>
+        <span>字段映射</span>
+        <small>检查网页字段与飞书列的对应关系</small>
+      </summary>
       <div id="feishuMapping" class="feishu-mapping"></div>
-    </section>
-
-    <div class="feishu-layout">
-      <section class="panel feishu-record-panel" aria-labelledby="recordTitle">
-        <div class="panel-heading">
-          <div><p class="eyebrow">SOURCE OF TRUTH</p><h2 id="recordTitle">飞书招聘总表</h2></div>
-          <span class="panel-note">网页修改不会直接写入，会先生成审核建议</span>
-        </div>
-        <div id="feishuTableShell" class="feishu-table-shell">
-          <div class="empty-recruitment">正在读取飞书记录…</div>
-        </div>
-      </section>
-
-      <aside class="panel feishu-review-panel" aria-labelledby="reviewTitle">
-        <div class="panel-heading">
-          <div><p class="eyebrow">REVIEW QUEUE</p><h2 id="reviewTitle">待审核变更</h2></div>
-          <button id="feishuBackfillButton" class="ghost-button" type="button">从邮件生成建议</button>
-        </div>
-        <div id="feishuProposalList" class="feishu-proposal-list">
-          <div class="empty-recruitment">正在读取审核队列…</div>
-        </div>
-      </aside>
-    </div>
+    </details>
   </main>
 
   <dialog id="feishuEditDialog" class="correction-dialog feishu-edit-dialog">
