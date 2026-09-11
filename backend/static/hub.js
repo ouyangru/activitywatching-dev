@@ -33,14 +33,20 @@ const SECTION_META = {
   recruiting: {
     eyebrow: 'AUTUMN RECRUITING',
     title: '秋招事务',
-    subtitle: '笔试、面试、截止日期和待跟进事项。',
-    placeholder: 'recruiting',
+    subtitle: 'QQ 邮件识别、笔试测评截止、面试安排与待确认事项。',
+    internalPath: '/recruitment',
   },
   projects: {
     eyebrow: 'PROJECTS & TOOLS',
     title: '项目与工具',
     subtitle: '把个人项目、代码仓库与学习入口集中管理。',
     placeholder: 'projects',
+  },
+  debug: {
+    eyebrow: 'SYSTEM / DEBUG',
+    title: '调试日志',
+    subtitle: '查看 HTTP、采集与 Agent 运行日志，方便复现和定位问题。',
+    internalPath: '/devlog',
   },
 };
 
@@ -172,6 +178,8 @@ function routeForUrl(url) {
   if (url.pathname === '/') return 'activity';
   if (url.pathname === '/daily') return 'daily';
   if (url.pathname === '/compare') return 'compare';
+  if (url.pathname === '/recruitment') return 'recruiting';
+  if (url.pathname === '/devlog') return 'debug';
   if (url.pathname === '/hub') return 'home';
   return null;
 }
@@ -204,7 +212,7 @@ function bindEmbeddedNavigation() {
 async function loadInternalPage(path, section, force = false) {
   const token = ++frameLoadToken;
   standaloneUrl = `${location.origin}${path}`;
-  setLoading(true, '正在加载行迹工作区…');
+  setLoading(true, '正在加载工作区…');
   els.frame.removeAttribute('src');
   try {
     let html = force ? null : htmlCache.get(path);
@@ -247,20 +255,6 @@ function loadExternalPage(url) {
 }
 
 function placeholderHtml(kind) {
-  if (kind === 'recruiting') {
-    return `
-      <section class="placeholder-panel">
-        <p class="eyebrow">AUTUMN RECRUITING</p>
-        <h2>秋招事务中心</h2>
-        <p>这一层先作为总控中的稳定入口，下一步再接邮件识别、截止日期和日历。现阶段不把它和知识库数据混在一起。</p>
-        <div class="placeholder-grid">
-          <article class="placeholder-card"><span>Deadline</span><h3>笔试 / 测评截止</h3><p>用于聚合只有截止日期、没有固定考试时段的通知。</p></article>
-          <article class="placeholder-card"><span>Interview</span><h3>面试安排</h3><p>后续可以和日历连接，统一展示下一场面试以及准备状态。</p></article>
-          <article class="placeholder-card"><span>Follow-up</span><h3>待跟进事项</h3><p>记录 HR 回复、流程状态、感谢信和需要二次确认的事项。</p></article>
-        </div>
-        <div class="placeholder-links"><a href="#interview" data-section="interview">进入面试知识库</a><a href="#daily" data-section="daily">打开今日复盘</a></div>
-      </section>`;
-  }
   return `
     <section class="placeholder-panel">
       <p class="eyebrow">PROJECTS & TOOLS</p>
@@ -310,7 +304,7 @@ function renderSection(section, force = false) {
 
   if (meta.internalPath || meta.externalUrl) {
     showView('frame');
-    els.workspaceLabel.textContent = meta.externalUrl ? 'External knowledge workspace' : 'Embedded activity workspace';
+    els.workspaceLabel.textContent = meta.externalUrl ? 'External knowledge workspace' : 'Embedded workspace';
     els.workspaceTitle.textContent = meta.title;
     const source = routeOverrides.get(currentSection) || meta.internalPath || meta.externalUrl;
     standaloneUrl = meta.externalUrl || `${location.origin}${source}`;
