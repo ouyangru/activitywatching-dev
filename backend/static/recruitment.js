@@ -14,10 +14,11 @@
   let filter = 'active';
   let allItems = [];
   let mailConfig = null;
+  let editingStatus = 'pending';
 
   const typeLabel = { written_test: '笔试', assessment: '测评', interview: '面试', other: '其他' };
   const modeLabel = { fixed_time: '固定时间', deadline: '截止事项', uncertain: '待确认' };
-  const statusLabel = { pending: '待处理', uncertain: '待确认', done: '已完成', expired: '已过期' };
+  const statusLabel = { pending: '待处理', uncertain: '待确认', done: '已完成', cancelled: '已取消', expired: '已过期' };
 
   function showToast(message) {
     if (!toast) return;
@@ -61,6 +62,18 @@
     return allItems.filter((item) => item.status === filter);
   }
 
+  function actionButtons(item, uncertain) {
+    const terminal = item.status === 'done' || item.status === 'cancelled';
+    const actionLink = item.action_url
+      ? `<a class="ghost-button" href="${escapeHtml(item.action_url)}" target="_blank" rel="noopener noreferrer">打开链接</a>`
+      : '';
+    const editButton = `<button class="ghost-button" type="button" data-action="edit" data-id="${item.id}">${uncertain ? '确认时间' : '修改'}</button>`;
+    if (terminal) {
+      return `${actionLink}${editButton}<button class="ghost-button" type="button" data-action="restore" data-id="${item.id}">恢复待办</button>`;
+    }
+    return `${actionLink}${editButton}<button class="ghost-button" type="button" data-action="complete" data-id="${item.id}">✓ 已完成</button><button class="ghost-button recruitment-cancel-button" type="button" data-action="cancel" data-id="${item.id}">取消事项</button>`;
+  }
+
   function renderItems() {
     const items = filteredItems();
     if (!items.length) {
@@ -78,15 +91,14 @@
       const distance = dayDistance(rawTime);
       const urgent = item.status === 'pending' && distance !== null && distance >= 0 && distance <= 1;
       const uncertain = item.status === 'uncertain';
-      const classes = ['recruitment-card', urgent ? 'is-urgent' : '', uncertain ? 'is-uncertain' : ''].filter(Boolean).join(' ');
+      const classes = [
+        'recruitment-card',
+        urgent ? 'is-urgent' : '',
+        uncertain ? 'is-uncertain' : '',
+        item.status === 'done' ? 'is-done' : '',
+        item.status === 'cancelled' ? 'is-cancelled' : '',
+      ].filter(Boolean).join(' ');
       const timePrefix = item.mode === 'fixed_time' ? '开始' : item.mode === 'deadline' ? '截止' : '待确认';
-      const actionLink = item.action_url
-        ? `<a class="ghost-button" href="${escapeHtml(item.action_url)}" target="_blank" rel="noopener noreferrer">打开链接</a>`
-        : '';
-      const doneButton = item.status === 'done'
-        ? ''
-        : `<button class="ghost-button" type="button" data-action="complete" data-id="${item.id}">✓ 已完成</button>`;
-      const editButton = `<button class="ghost-button" type="button" data-action="edit" data-id="${item.id}">${uncertain ? '确认时间' : '修改'}</button>`;
       return `
         <article class="${classes}">
           <div class="recruitment-card-head">
@@ -94,14 +106,14 @@
               <h3>${escapeHtml(item.company || '未知公司')} · ${escapeHtml(typeLabel[item.item_type] || '秋招事项')}</h3>
               <p>${escapeHtml(item.title || item.source_subject || '')}</p>
               <div class="recruitment-badges">
-                <span class="recruitment-badge emphasis">${escapeHtml(statusLabel[item.status] || item.status)}</span>
+                <span class="recruitment-badge emphasis status-${escapeHtml(item.status)}">${escapeHtml(statusLabel[item.status] || item.status)}</span>
                 <span class="recruitment-badge">${escapeHtml(modeLabel[item.mode] || item.mode)}</span>
               </div>
             </div>
             <div class="recruitment-time"><small>${timePrefix}</small><strong>${escapeHtml(formatDate(rawTime))}</strong></div>
           </div>
           ${item.extraction_note ? `<p class="recruitment-card-note">${escapeHtml(item.extraction_note)}</p>` : ''}
-          <div class="recruitment-card-actions">${actionLink}${editButton}${doneButton}</div>
+          <div class="recruitment-card-actions">${actionButtons(item, uncertain)}</div>
         </article>`;
     }).join('');
   }
@@ -165,6 +177,14 @@
     return response.json();
   }
 
+  async function updateStatus(item, status) {
+    await api(`/api/v1/recruitment/items/${item.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+  }
+
   async function loadAll() {
     stateEl.textContent = '正在加载秋招事项…';
     try {
@@ -205,6 +225,7 @@
   }
 
   function openEdit(item) {
+    editingStatus = item.status || 'pending';
     document.getElementById('editRecruitmentId').value = item.id;
     document.getElementById('editCompany').value = item.company || '';
     document.getElementById('editTitle').value = item.title || '';
@@ -230,19 +251,36 @@
     const id = Number(button.dataset.id);
     const item = allItems.find((candidate) => candidate.id === id);
     if (!item) return;
+
     if (button.dataset.action === 'edit') {
       openEdit(item);
       return;
     }
-    if (button.dataset.action === 'complete') {
-      button.disabled = true;
-      try {
-        await api(`/api/v1/recruitment/items/${id}/complete`, { method: 'POST' });
+
+    button.disabled = true;
+    try {
+      if (button.dataset.action === 'complete') {
+        await updateStatus(item, 'done');
         showToast('已标记完成');
-        await loadAll();
-      } catch (error) {
-        showToast(`操作失败：${error.message}`);
+      } else if (button.dataset.action === 'cancel') {
+        const name = item.company || item.title || '该事项';
+        if (!window.confirm(`确认取消「${name}」？取消后不会再计入截止提醒，可随时从“已取消”中恢复。`)) {
+          button.disabled = false;
+          return;
+        }
+        await updateStatus(item, 'cancelled');
+        showToast('事项已取消');
+      } else if (button.dataset.action === 'restore') {
+        await updateStatus(item, item.mode === 'uncertain' ? 'uncertain' : 'pending');
+        showToast('已恢复为待办');
+      } else {
+        button.disabled = false;
+        return;
       }
+      await loadAll();
+    } catch (error) {
+      button.disabled = false;
+      showToast(`操作失败：${error.message}`);
     }
   });
 
@@ -250,12 +288,13 @@
     event.preventDefault();
     const id = Number(document.getElementById('editRecruitmentId').value);
     const mode = document.getElementById('editMode').value;
+    const terminalStatus = editingStatus === 'done' || editingStatus === 'cancelled' ? editingStatus : null;
     const payload = {
       company: document.getElementById('editCompany').value.trim(),
       title: document.getElementById('editTitle').value.trim(),
       item_type: document.getElementById('editType').value,
       mode,
-      status: mode === 'uncertain' ? 'uncertain' : 'pending',
+      status: terminalStatus || (mode === 'uncertain' ? 'uncertain' : 'pending'),
       deadline_at: document.getElementById('editDeadline').value.trim() || null,
       start_at: document.getElementById('editStart').value.trim() || null,
       action_url: document.getElementById('editUrl').value.trim() || null,
