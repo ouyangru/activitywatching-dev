@@ -9,7 +9,7 @@ window.DevLog = (() => {
     agent_input:'Agent 输入', agent_output:'Agent 输出', event:'模块事件'
   };
   const MODULE_LABELS = {
-    activity:'活动分析', recruitment:'秋招事项', feishu:'招聘进度', calendar:'日历',
+    activity:'活动分析', frontend:'前端', recruitment:'秋招事项', feishu:'招聘进度', calendar:'日历',
     mail:'邮件扫描', bridge:'招聘↔日历', agent:'Agent', ingest:'采集', system:'系统'
   };
 
@@ -35,7 +35,7 @@ window.DevLog = (() => {
       }
       case 'agent_input': return `${entry.llm_kind || ''} · ${entry.model || ''} · 请求 ${entry.request_id || ''}`;
       case 'agent_output': return `${entry.llm_kind || ''} · ${entry.status || ''}${entry.elapsed_ms != null ? ` · ${entry.elapsed_ms}ms` : ''}${entry.error ? ` · ${entry.error}` : ''}`;
-      case 'event': return `${entry.action || '事件'}${entry.status ? ` · ${entry.status}` : ''}${entry.detail ? ` · ${entry.detail}` : ''}`;
+      case 'event': return `${entry.action || '事件'}${entry.status ? ` · ${entry.status}` : ''}${entry.detail ? ` · ${entry.detail}` : ''}${entry.error ? ` · ${entry.error}` : ''}`;
       default: return entry.action || entry.detail || '';
     }
   }
