@@ -150,7 +150,7 @@ WantedBy=timers.target
     subprocess.run(["systemctl", "enable", "--now", "activity-timeline", "nginx"], check=True)
     subprocess.run(["systemctl", "reload", "nginx"], check=True)
     if tls:
-        subprocess.run(["systemctl", "enable", "--now", "activity-cert-renew.timer"])
+        subprocess.run(["systemctl", "enable", "--now", "activity-cert-renew.timer"], check=True)
 
 
 if __name__ == "__main__":
