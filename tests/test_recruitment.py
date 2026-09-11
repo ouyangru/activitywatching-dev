@@ -1,3 +1,4 @@
+import sqlite3
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
@@ -65,6 +66,23 @@ def test_unknown_time_goes_to_confirmation(monkeypatch):
     assert item is not None
     assert item["mode"] == "uncertain"
     assert item["status"] == "uncertain"
+
+
+def test_extract_pipeline_metadata_from_shopee_mail(monkeypatch):
+    monkeypatch.setenv("ACTIVITYWATCH_TIMEZONE", "Asia/Shanghai")
+    item = extract_recruitment_item(
+        "Shopee-嵌入式软件开发-2027届校招笔试通知",
+        "Shopee Campus <campus@example.com>",
+        "职位：嵌入式软件开发\n工作地点：深圳\n笔试时间：2026年9月20日 19:00\nhttps://careers.example.com/shopee",
+        datetime(2026, 9, 11, 10, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+    assert item is not None
+    assert item["company"] == "Shopee"
+    assert item["position"] == "嵌入式软件开发"
+    assert item["recruitment_type"] == "校招"
+    assert item["location"] == "深圳"
+    assert item["item_type"] == "written_test"
+    assert item["start_at"].startswith("2026-09-20T19:00")
 
 
 def test_summary_three_days_means_next_three_days_only():
@@ -135,7 +153,10 @@ def test_summary_three_days_means_next_three_days_only():
     assert summary["uncertain"] == 1
 
 
-def test_recruitment_tables_initialize(tmp_path):
+def test_recruitment_tables_initialize_with_pipeline_columns(tmp_path):
     db_path = tmp_path / "activitywatch.db"
     init_recruitment_db(db_path)
     assert db_path.exists()
+    with sqlite3.connect(db_path) as connection:
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(recruitment_items)")}
+    assert {"position", "recruitment_type", "location", "priority"}.issubset(columns)

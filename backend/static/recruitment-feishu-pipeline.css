@@ -1,0 +1,148 @@
+.feishu-table .feishu-group-row td {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  height: 30px;
+  padding: 6px 10px;
+  background: var(--panel-strong, #23313e);
+  color: var(--text, #e7eef5);
+  font-size: 11px;
+  font-weight: 650;
+  border-bottom-color: var(--line-strong, #4a6275);
+}
+
+.feishu-group-row small {
+  margin-left: 8px;
+  color: var(--muted, #a5b5c4);
+  font-weight: 400;
+}
+
+.feishu-cell-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 7px;
+  border: 1px solid rgba(130, 206, 221, 0.24);
+  border-radius: 4px;
+  background: rgba(130, 206, 221, 0.06);
+  color: var(--accent-strong, #b5e6ef);
+  font-size: 11px;
+}
+
+.feishu-proposal-table-shell {
+  overflow: auto;
+  max-height: 62vh;
+}
+
+.feishu-review-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
+}
+
+.feishu-review-table th,
+.feishu-review-table td {
+  min-width: 116px;
+  max-width: 230px;
+  height: 38px;
+  padding: 7px 9px;
+  text-align: left;
+  vertical-align: middle;
+  border-right: 1px solid var(--line, #344250);
+  border-bottom: 1px solid var(--line, #344250);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--control, #17212b);
+}
+
+.feishu-review-table th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: 34px;
+  color: var(--muted, #a5b5c4);
+  background: var(--panel-strong, #23313e);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.feishu-review-table tbody tr:hover td {
+  background: var(--panel-soft, #1c2733);
+}
+
+.feishu-review-table .feishu-review-action-cell {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  min-width: 232px;
+  width: 232px;
+  background: var(--panel, #1b242e) !important;
+  box-shadow: -1px 0 0 var(--line, #344250);
+}
+
+.feishu-review-actions-inline {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.feishu-review-actions-inline .ghost-button {
+  min-height: 26px;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.feishu-match-note {
+  color: var(--muted, #a5b5c4);
+  font-size: 11px;
+}
+
+.feishu-match-note.is-ready {
+  color: var(--accent-strong, #b5e6ef);
+}
+
+.feishu-match-note.is-warning {
+  color: #d9ab75;
+}
+
+.feishu-proposal-context {
+  min-width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line, #344250);
+  border-radius: 5px;
+  background: var(--control, #17212b);
+  color: var(--muted, #a5b5c4);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.feishu-proposal-context strong {
+  color: var(--text, #e7eef5);
+}
+
+.feishu-edit-fields .feishu-full-row {
+  grid-column: 1 / -1;
+}
+
+.feishu-edit-fields select.recruitment-input {
+  width: 100%;
+}
+
+.feishu-edit-fields textarea.recruitment-input {
+  min-height: 86px;
+  resize: vertical;
+}
+
+@media (max-width: 720px) {
+  .feishu-review-table .feishu-review-action-cell {
+    min-width: 190px;
+    width: 190px;
+  }
+
+  .feishu-review-actions-inline {
+    flex-wrap: wrap;
+  }
+}
