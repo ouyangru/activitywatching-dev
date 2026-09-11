@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/static/styles.css?v=20260909-2">
   <link rel="stylesheet" href="/static/design.css?v=20260909-4">
   <link rel="stylesheet" href="/static/recruitment.css?v=20260911-3">
+  <link rel="stylesheet" href="/static/recruitment-calendar.css?v=20260911-1">
 </head>
 <body>
   <div class="ambient ambient-one"></div>
@@ -29,7 +30,7 @@
       <div>
         <p class="eyebrow">RECRUITMENT CONTROL CENTER</p>
         <h1>秋招事项</h1>
-        <p class="hero-meta">QQ 邮箱负责采集，网页负责确认与管理；已完成和已取消分别归档，不再干扰待办与截止提醒。</p>
+        <p class="hero-meta">邮件识别负责收集，事项列表负责处理；日历视图负责排期、编辑与 Google Calendar 同步。</p>
       </div>
       <div class="recruitment-actions">
         <button id="scanMailButton" class="ghost-button" type="button">立即检查 QQ 邮箱</button>
@@ -37,40 +38,86 @@
       </div>
     </section>
 
+    <div class="recruitment-view-tabs" role="tablist" aria-label="秋招视图">
+      <button class="ghost-button is-active" type="button" data-recruitment-view="list">事项列表</button>
+      <button class="ghost-button" type="button" data-recruitment-view="calendar">日历视图</button>
+    </div>
+
     <p id="recruitmentState" class="page-state" role="status" aria-live="polite"></p>
 
-    <section class="stats recruitment-stats" aria-label="秋招概览">
-      <article><span>今天截止</span><strong id="summaryToday">0</strong></article>
-      <article><span>未来 3 天</span><strong id="summaryThreeDays">0</strong></article>
-      <article><span>待确认</span><strong id="summaryUncertain">0</strong></article>
-      <article><span>最近事项</span><strong id="summaryNext">暂无</strong></article>
-    </section>
+    <section id="recruitmentListView">
+      <section class="stats recruitment-stats" aria-label="秋招概览">
+        <article><span>今天截止</span><strong id="summaryToday">0</strong></article>
+        <article><span>未来 3 天</span><strong id="summaryThreeDays">0</strong></article>
+        <article><span>待确认</span><strong id="summaryUncertain">0</strong></article>
+        <article><span>最近事项</span><strong id="summaryNext">暂无</strong></article>
+      </section>
 
-    <section class="panel recruitment-toolbar" aria-label="筛选秋招事项">
-      <div class="filter-group">
-        <button class="view-switch-button is-active" type="button" data-recruitment-filter="active">待处理</button>
-        <button class="view-switch-button" type="button" data-recruitment-filter="uncertain">待确认</button>
-        <button class="view-switch-button" type="button" data-recruitment-filter="done">已完成</button>
-        <button class="view-switch-button" type="button" data-recruitment-filter="cancelled">已取消</button>
-        <button class="view-switch-button" type="button" data-recruitment-filter="all">全部</button>
+      <section class="panel recruitment-toolbar" aria-label="筛选秋招事项">
+        <div class="filter-group">
+          <button class="view-switch-button is-active" type="button" data-recruitment-filter="active">待处理</button>
+          <button class="view-switch-button" type="button" data-recruitment-filter="uncertain">待确认</button>
+          <button class="view-switch-button" type="button" data-recruitment-filter="done">已完成</button>
+          <button class="view-switch-button" type="button" data-recruitment-filter="cancelled">已取消</button>
+          <button class="view-switch-button" type="button" data-recruitment-filter="all">全部</button>
+        </div>
+      </section>
+
+      <div class="recruitment-layout">
+        <section class="panel recruitment-list-panel" aria-labelledby="recruitmentListTitle">
+          <div class="panel-heading">
+            <div><p class="eyebrow">TASKS</p><h2 id="recruitmentListTitle">待办事项</h2></div>
+          </div>
+          <div id="recruitmentList" class="recruitment-list" aria-live="polite"></div>
+        </section>
+
+        <section class="panel recruitment-log-panel" aria-labelledby="mailLogTitle">
+          <div class="panel-heading">
+            <div><p class="eyebrow">MAIL TRACE</p><h2 id="mailLogTitle">邮件处理记录</h2></div>
+          </div>
+          <div id="mailLogList" class="mail-log-list"></div>
+        </section>
       </div>
     </section>
 
-    <div class="recruitment-layout">
-      <section class="panel recruitment-list-panel" aria-labelledby="recruitmentListTitle">
-        <div class="panel-heading">
-          <div><p class="eyebrow">TASKS</p><h2 id="recruitmentListTitle">待办事项</h2></div>
+    <section id="recruitmentCalendarView" hidden>
+      <section class="panel calendar-toolbar">
+        <div class="calendar-toolbar-left">
+          <button id="calendarPrevMonth" class="ghost-button" type="button">←</button>
+          <button id="calendarTodayButton" class="ghost-button" type="button">今天</button>
+          <button id="calendarNextMonth" class="ghost-button" type="button">→</button>
+          <h2 id="calendarMonthLabel">—</h2>
         </div>
-        <div id="recruitmentList" class="recruitment-list" aria-live="polite"></div>
+        <div class="calendar-toolbar-right">
+          <button id="calendarAddButton" class="ghost-button" type="button">＋ 新增日程</button>
+          <button id="calendarSyncAllButton" class="ghost-button" type="button" disabled>同步待办到 Google</button>
+          <button id="googleCalendarButton" class="ghost-button" type="button">连接 Google 日历</button>
+          <button id="googleCalendarDisconnect" class="ghost-button" type="button" hidden>断开 Google</button>
+        </div>
       </section>
 
-      <section class="panel recruitment-log-panel" aria-labelledby="mailLogTitle">
-        <div class="panel-heading">
-          <div><p class="eyebrow">MAIL TRACE</p><h2 id="mailLogTitle">邮件处理记录</h2></div>
-        </div>
-        <div id="mailLogList" class="mail-log-list"></div>
-      </section>
-    </div>
+      <div class="google-status-line">
+        <span id="googleCalendarDot" class="google-dot" aria-hidden="true"></span>
+        <span id="googleCalendarState">正在读取 Google Calendar 状态…</span>
+      </div>
+
+      <div class="calendar-shell">
+        <section class="calendar-main">
+          <div class="calendar-weekdays" aria-hidden="true">
+            <span>周一</span><span>周二</span><span>周三</span><span>周四</span><span>周五</span><span>周六</span><span>周日</span>
+          </div>
+          <div id="recruitmentCalendarGrid" class="calendar-grid" aria-live="polite"></div>
+        </section>
+
+        <aside class="panel calendar-day-panel" aria-labelledby="calendarDayTitle">
+          <div class="panel-heading">
+            <div><p class="eyebrow">DAY PLAN</p><h2 id="calendarDayTitle">—</h2></div>
+            <button class="ghost-button" type="button" onclick="document.getElementById('calendarAddButton').click()">新增</button>
+          </div>
+          <div id="calendarDayList" class="calendar-day-list"></div>
+        </aside>
+      </div>
+    </section>
   </main>
 
   <dialog id="editRecruitmentDialog" class="correction-dialog">
@@ -115,8 +162,84 @@
     </form>
   </dialog>
 
+  <dialog id="calendarEventDialog" class="correction-dialog calendar-dialog">
+    <form id="calendarEventForm" method="dialog">
+      <div>
+        <p class="eyebrow">CALENDAR EVENT</p>
+        <h3 id="calendarDialogTitle">新增日程</h3>
+      </div>
+      <input id="calendarEventSource" type="hidden" value="local">
+      <label class="full">标题
+        <input id="calendarEventTitle" class="recruitment-input" type="text" maxlength="512" required>
+      </label>
+
+      <div id="calendarLocalMeta" class="calendar-dialog-grid full">
+        <label>公司 / 来源
+          <input id="calendarEventCompany" class="recruitment-input" type="text" maxlength="128" placeholder="可留空">
+        </label>
+        <label>类型
+          <select id="calendarEventType" class="device-filter">
+            <option value="other">其他</option>
+            <option value="written_test">笔试</option>
+            <option value="assessment">测评</option>
+            <option value="interview">面试</option>
+          </select>
+        </label>
+        <label class="full">日程模式
+          <select id="calendarEventMode" class="device-filter">
+            <option value="fixed_time">固定时间</option>
+            <option value="deadline">截止事项</option>
+          </select>
+        </label>
+      </div>
+
+      <div id="calendarFixedFields" class="calendar-dialog-grid full">
+        <label>开始时间
+          <input id="calendarEventStart" class="recruitment-input" type="datetime-local">
+        </label>
+        <label>结束时间（可选）
+          <input id="calendarEventEnd" class="recruitment-input" type="datetime-local">
+        </label>
+      </div>
+
+      <div id="calendarDeadlineFields" class="calendar-dialog-grid full" hidden>
+        <label>截止日期
+          <input id="calendarDeadlineDate" class="recruitment-input" type="date">
+        </label>
+        <label>具体时间（可选）
+          <input id="calendarDeadlineTime" class="recruitment-input" type="time">
+        </label>
+      </div>
+
+      <label id="calendarGoogleAllDayRow" class="calendar-google-row full" hidden>
+        <input id="calendarGoogleAllDay" type="checkbox"> 全天日程
+      </label>
+      <label id="calendarGoogleDateRow" class="full" hidden>日期
+        <input id="calendarGoogleDate" class="recruitment-input" type="date">
+      </label>
+      <label id="calendarLocalUrlRow" class="full">相关链接
+        <input id="calendarEventUrl" class="recruitment-input" type="url" maxlength="2048" placeholder="测评 / 面试 / 招聘系统链接">
+      </label>
+      <label id="calendarGoogleDescriptionRow" class="full" hidden>说明
+        <textarea id="calendarGoogleDescription" class="recruitment-input" rows="4" maxlength="8000"></textarea>
+      </label>
+      <label id="calendarSyncRow" class="calendar-google-row full" hidden>
+        <input id="calendarSyncGoogle" type="checkbox"> 保存后同步到 Google Calendar
+      </label>
+
+      <div class="calendar-dialog-actions full">
+        <button id="calendarDeleteButton" class="ghost-button calendar-danger" type="button" hidden>删除 Google 日程</button>
+        <div>
+          <button id="calendarDialogCancel" class="ghost-button" type="button">关闭</button>
+          <button class="ghost-button correction-save" type="submit">保存</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="/static/ui.js?v=20260910-2" defer></script>
   <script src="/static/recruitment.js?v=20260911-4" defer></script>
+  <script src="/static/recruitment-calendar.js?v=20260911-1" defer></script>
 </body>
 </html>
