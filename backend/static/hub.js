@@ -45,7 +45,7 @@ const SECTION_META = {
   debug: {
     eyebrow: 'SYSTEM / DEBUG',
     title: '调试日志',
-    subtitle: '查看 HTTP、采集与 Agent 运行日志，方便复现和定位问题。',
+    subtitle: '查看 HTTP、采集与 Agent 输入输出，方便复现和定位问题。',
     internalPath: '/devlog',
   },
 };
@@ -77,7 +77,6 @@ const els = {
   reloadFrame: document.getElementById('reloadFrame'),
 };
 
-const htmlCache = new Map();
 const routeOverrides = new Map();
 let currentSection = 'home';
 let standaloneUrl = '';
@@ -110,6 +109,30 @@ async function fetchJson(path) {
   if (response.status === 401) throw new Error('AUTH');
   if (!response.ok) throw new Error(`${response.status}`);
   return response.json();
+}
+
+async function reportClientError(error, details = {}) {
+  const message = error instanceof Error ? error.message : String(error || 'client error');
+  const stack = error instanceof Error ? error.stack || '' : String(details.stack || '');
+  try {
+    await fetch('/api/v1/debug/client-error', {
+      method: 'POST',
+      credentials: 'same-origin',
+      keepalive: true,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: details.action || 'hub_client_error',
+        message,
+        stack,
+        page: details.page || location.pathname,
+        source: details.source || '',
+        line: details.line || null,
+        column: details.column || null,
+      }),
+    });
+  } catch (_) {
+    // Debug reporting must never break the Hub itself.
+  }
 }
 
 async function loadHubSummary() {
@@ -149,28 +172,13 @@ async function loadHubSummary() {
     setStatus('is-offline', '暂未连接');
     els.currentCategory.textContent = '离线';
     els.currentBehavior.textContent = '总控入口仍可使用，实时数据暂不可用';
+    reportClientError(error, { action: 'hub_summary_load' });
   }
 }
 
 function setLoading(visible, label = '正在加载工作区…') {
   els.frameLoading.querySelector('p').textContent = label;
   els.frameLoading.classList.toggle('is-hidden', !visible);
-}
-
-function embeddedHtml(source, sourcePath) {
-  const patch = `
-    <style id="personal-hub-embed-style">
-      html, body { background: #131a22 !important; }
-      .topbar { display: none !important; }
-      .shell { width: min(1440px, calc(100% - 28px)) !important; padding-top: 12px !important; padding-bottom: 28px !important; }
-      .ambient { display: none !important; }
-      @media (max-width: 700px) { .shell { width: calc(100% - 16px) !important; } }
-    </style>
-    <script>window.__PERSONAL_HUB_EMBEDDED__ = true;<\/script>`;
-  const base = `<base href="${location.origin}${sourcePath}">`;
-  return source.includes('</head>')
-    ? source.replace('</head>', `${base}${patch}</head>`)
-    : `${base}${patch}${source}`;
 }
 
 function routeForUrl(url) {
@@ -184,59 +192,101 @@ function routeForUrl(url) {
   return null;
 }
 
-function bindEmbeddedNavigation() {
-  let doc;
-  try {
-    doc = els.frame.contentDocument;
-  } catch (_) {
-    return;
+function applyEmbeddedPresentation(doc) {
+  let style = doc.getElementById('personal-hub-embed-style');
+  if (!style) {
+    style = doc.createElement('style');
+    style.id = 'personal-hub-embed-style';
+    style.textContent = `
+      html, body { background: #131a22 !important; }
+      .topbar { display: none !important; }
+      .shell { width: min(1440px, calc(100% - 28px)) !important; padding-top: 12px !important; padding-bottom: 28px !important; }
+      .ambient { display: none !important; }
+      @media (max-width: 700px) { .shell { width: calc(100% - 16px) !important; } }
+    `;
+    doc.head?.appendChild(style);
   }
+}
+
+function bindEmbeddedNavigation(doc) {
   if (!doc || doc.documentElement.dataset.hubNavigationBound) return;
   doc.documentElement.dataset.hubNavigationBound = '1';
   doc.addEventListener('click', (event) => {
     const anchor = event.target.closest?.('a[href]');
     if (!anchor || anchor.target === '_blank' || event.defaultPrevented) return;
     try {
-      const url = new URL(anchor.getAttribute('href'), location.origin);
+      const url = new URL(anchor.href, doc.baseURI);
       const section = routeForUrl(url);
       if (!section) return;
       event.preventDefault();
       if (section !== 'home') routeOverrides.set(section, `${url.pathname}${url.search}`);
       navigate(section);
-    } catch (_) {
-      // Keep the embedded page's default behavior for links we do not own.
+    } catch (error) {
+      reportClientError(error, { action: 'hub_embedded_navigation', page: doc.location?.pathname || '' });
     }
   });
 }
 
-async function loadInternalPage(path, section, force = false) {
+function bindEmbeddedErrors(win, doc) {
+  if (!win || win.__PERSONAL_HUB_ERROR_BOUND__) return;
+  win.__PERSONAL_HUB_ERROR_BOUND__ = true;
+  win.addEventListener('error', (event) => {
+    reportClientError(event.error || event.message, {
+      action: 'window_error',
+      page: doc.location?.pathname || '',
+      source: event.filename || '',
+      line: event.lineno,
+      column: event.colno,
+      stack: event.error?.stack || '',
+    });
+  });
+  win.addEventListener('unhandledrejection', (event) => {
+    reportClientError(event.reason || 'Unhandled promise rejection', {
+      action: 'unhandled_rejection',
+      page: doc.location?.pathname || '',
+      stack: event.reason?.stack || '',
+    });
+  });
+}
+
+function decorateLoadedInternalFrame(token, section) {
+  if (token !== frameLoadToken || currentSection !== section) return;
+  let win;
+  let doc;
+  try {
+    win = els.frame.contentWindow;
+    doc = els.frame.contentDocument;
+    if (!win || !doc) return;
+    if (win.location.pathname === '/login') {
+      location.assign('/login');
+      return;
+    }
+  } catch (error) {
+    setLoading(false);
+    reportClientError(error, { action: 'hub_frame_access' });
+    return;
+  }
+  win.__PERSONAL_HUB_EMBEDDED__ = true;
+  applyEmbeddedPresentation(doc);
+  bindEmbeddedNavigation(doc);
+  bindEmbeddedErrors(win, doc);
+  setLoading(false);
+}
+
+function loadInternalPage(path, section, force = false) {
   const token = ++frameLoadToken;
   standaloneUrl = `${location.origin}${path}`;
   setLoading(true, '正在加载工作区…');
-  els.frame.removeAttribute('src');
+  els.frame.removeAttribute('srcdoc');
+  els.frame.onload = () => decorateLoadedInternalFrame(token, section);
+
   try {
-    let html = force ? null : htmlCache.get(path);
-    if (!html) {
-      const response = await fetch(path, { credentials: 'same-origin', cache: force ? 'reload' : 'default' });
-      if (response.redirected && new URL(response.url).pathname === '/login') {
-        location.assign('/login');
-        return;
-      }
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      html = await response.text();
-      htmlCache.set(path, html);
-    }
-    if (token !== frameLoadToken || currentSection !== section) return;
-    els.frame.onload = () => {
-      if (token !== frameLoadToken) return;
-      setLoading(false);
-      bindEmbeddedNavigation();
-    };
-    els.frame.srcdoc = embeddedHtml(html, path);
+    const url = new URL(path, location.origin);
+    if (force) url.searchParams.set('_hub_reload', String(Date.now()));
+    els.frame.src = `${url.pathname}${url.search}${url.hash}`;
   } catch (error) {
-    if (token !== frameLoadToken) return;
     setLoading(false);
-    els.frame.srcdoc = `<!doctype html><meta charset="utf-8"><style>body{margin:0;background:#131a22;color:#e7eef5;font-family:'Segoe UI','Microsoft YaHei',system-ui,sans-serif;padding:36px}p{color:#a5b5c4;line-height:1.7}button{padding:9px 12px;border:1px solid #425465;background:#23313e;color:#c9dce9;border-radius:5px}</style><h2>工作区加载失败</h2><p>${String(error.message || error)}</p>`;
+    reportClientError(error, { action: 'hub_internal_url', page: path });
   }
 }
 
@@ -254,7 +304,7 @@ function loadExternalPage(url) {
   }, 4500);
 }
 
-function placeholderHtml(kind) {
+function placeholderHtml() {
   return `
     <section class="placeholder-panel">
       <p class="eyebrow">PROJECTS & TOOLS</p>
@@ -315,7 +365,7 @@ function renderSection(section, force = false) {
   }
 
   showView('placeholder');
-  els.placeholderContent.innerHTML = placeholderHtml(meta.placeholder);
+  els.placeholderContent.innerHTML = placeholderHtml();
 }
 
 function navigate(section) {
@@ -342,7 +392,6 @@ els.reloadFrame.addEventListener('click', () => {
   if (meta.externalUrl) loadExternalPage(meta.externalUrl);
   else if (meta.internalPath) {
     const source = routeOverrides.get(currentSection) || meta.internalPath;
-    htmlCache.delete(source);
     loadInternalPage(source, currentSection, true);
   }
 });
@@ -358,6 +407,21 @@ document.addEventListener('click', (event) => {
   navigate(section);
 });
 
+window.addEventListener('error', (event) => {
+  reportClientError(event.error || event.message, {
+    action: 'hub_window_error',
+    source: event.filename || '',
+    line: event.lineno,
+    column: event.colno,
+    stack: event.error?.stack || '',
+  });
+});
+window.addEventListener('unhandledrejection', (event) => {
+  reportClientError(event.reason || 'Unhandled promise rejection', {
+    action: 'hub_unhandled_rejection',
+    stack: event.reason?.stack || '',
+  });
+});
 window.addEventListener('hashchange', () => renderSection(sectionFromHash()));
 
 updateClock();
