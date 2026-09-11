@@ -39,6 +39,35 @@ db_path = Path(os.getenv("ACTIVITYWATCH_DB_PATH", str(DEFAULT_DB)))
 app.include_router(build_recruitment_router(db_path, require_recruitment_auth))
 
 
+@app.get("/api/v1/recruitment/config-status")
+def recruitment_config_status(request: Request, activity_token: str | None = Cookie(default=None)) -> dict[str, object]:
+    require_recruitment_auth(request, activity_token)
+    email_address = os.getenv("QQ_EMAIL", "").strip()
+    auth_code = os.getenv("QQ_EMAIL_AUTH_CODE", "").strip()
+    auto_scan = os.getenv("RECRUITMENT_AUTO_SCAN", "1") != "0"
+    try:
+        interval = max(60, int(os.getenv("RECRUITMENT_SCAN_INTERVAL_SECONDS", "600")))
+    except ValueError:
+        interval = 600
+    account_hint = ""
+    if email_address:
+        local, _, domain = email_address.partition("@")
+        if len(local) <= 2:
+            masked = local[:1] + "*"
+        else:
+            masked = local[:2] + "***" + local[-1:]
+        account_hint = f"{masked}@{domain}" if domain else masked
+    return {
+        "mail_configured": bool(email_address and auth_code),
+        "email_configured": bool(email_address),
+        "auth_code_configured": bool(auth_code),
+        "account_hint": account_hint,
+        "auto_scan_enabled": auto_scan,
+        "scan_interval_seconds": interval,
+        "debug_view_enabled": os.getenv("ACTIVITYWATCH_DEBUG_VIEW", "0") == "1",
+    }
+
+
 @app.get("/recruitment", include_in_schema=False)
 def recruitment_page(request: Request, token: str | None = Query(default=None)) -> Response:
     production = os.getenv("ACTIVITYWATCH_ENV", "development") == "production"
@@ -56,13 +85,18 @@ def recruitment_page(request: Request, token: str | None = Query(default=None)) 
 
 
 async def _recruitment_poll_loop() -> None:
-    interval = max(60, int(os.getenv("RECRUITMENT_SCAN_INTERVAL_SECONDS", "600")))
+    try:
+        interval = max(60, int(os.getenv("RECRUITMENT_SCAN_INTERVAL_SECONDS", "600")))
+    except ValueError:
+        interval = 600
     while True:
         try:
             if os.getenv("QQ_EMAIL") and os.getenv("QQ_EMAIL_AUTH_CODE"):
                 result = await asyncio.to_thread(scan_qq_mail, db_path)
                 if result.get("imported") or result.get("uncertain"):
                     LOG.info("recruitment scan result=%s", result)
+            else:
+                LOG.warning("recruitment auto scan skipped: QQ_EMAIL / QQ_EMAIL_AUTH_CODE not configured")
         except asyncio.CancelledError:
             raise
         except Exception:

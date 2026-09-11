@@ -14,6 +14,24 @@ def write(path, content, mode=0o644):
     target.chmod(mode)
 
 
+def ensure_env_keys(path: pathlib.Path, defaults: dict[str, str]) -> None:
+    """Append newly introduced settings without overwriting existing secrets."""
+    current = path.read_text(encoding="utf-8") if path.exists() else ""
+    existing = {
+        line.split("=", 1)[0].strip()
+        for line in current.splitlines()
+        if line.strip() and not line.lstrip().startswith("#") and "=" in line
+    }
+    missing = [(key, value) for key, value in defaults.items() if key not in existing]
+    if not missing:
+        return
+    suffix = "" if not current or current.endswith("\n") else "\n"
+    suffix += "\n# Recruitment / debug settings added by deployment upgrade\n"
+    suffix += "".join(f"{key}={value}\n" for key, value in missing)
+    path.write_text(current + suffix, encoding="utf-8")
+    path.chmod(0o600)
+
+
 def configure():
     subprocess.run(["useradd", "--system", "--home", "/var/lib/activity-timeline", "--shell", "/usr/sbin/nologin", "activity-timeline"], check=False)
     pathlib.Path("/var/lib/activity-timeline").mkdir(exist_ok=True)
@@ -25,16 +43,22 @@ def configure():
             "ACTIVITYWATCH_ENV=production\n"
             "ACTIVITYWATCH_TIMEZONE=Asia/Shanghai\n"
             "ACTIVITYWATCH_DB_PATH=/var/lib/activity-timeline/activitywatch.db\n"
-            "ACTIVITYWATCH_API_TOKEN=" + secrets.token_urlsafe(48) + "\n"
-            "QQ_EMAIL=\n"
-            "QQ_EMAIL_AUTH_CODE=\n"
-            "QQ_IMAP_HOST=imap.qq.com\n"
-            "QQ_IMAP_PORT=993\n"
-            "QQ_IMAP_MAILBOX=INBOX\n"
-            "RECRUITMENT_AUTO_SCAN=1\n"
-            "RECRUITMENT_SCAN_INTERVAL_SECONDS=600\n",
+            "ACTIVITYWATCH_API_TOKEN=" + secrets.token_urlsafe(48) + "\n",
             0o600,
         )
+    ensure_env_keys(
+        env,
+        {
+            "ACTIVITYWATCH_DEBUG_VIEW": "1",
+            "QQ_EMAIL": "",
+            "QQ_EMAIL_AUTH_CODE": "",
+            "QQ_IMAP_HOST": "imap.qq.com",
+            "QQ_IMAP_PORT": "993",
+            "QQ_IMAP_MAILBOX": "INBOX",
+            "RECRUITMENT_AUTO_SCAN": "1",
+            "RECRUITMENT_SCAN_INTERVAL_SECONDS": "600",
+        },
+    )
     write("/etc/systemd/system/activity-timeline.service", """[Unit]
 Description=Activity Timeline API
 After=network.target

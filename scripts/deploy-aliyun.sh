@@ -9,7 +9,7 @@
 #   2. 本地 GitHub SSH key 可用（origin 已配置为 git@github.com:...）
 #   3. 可免密 SSH 登录 root@47.82.104.59
 #
-# 流程：干净树检查 -> push -> 服务器拉取+装依赖+重启 -> 健康检查 -> 失败自动回滚
+# 流程：干净树检查 -> push -> 服务器拉取+装依赖+升级配置+重启 -> 健康检查 -> 失败自动回滚
 # 注意：服务器 /opt/activity-timeline 上的未提交改动会被 reset --hard 覆盖，
 #       请始终在本地开发，服务器端临时改动先备份（参考 server-backup-20260906 分支）。
 
@@ -41,7 +41,7 @@ LOCAL_COMMIT=$(git rev-parse --short HEAD)
 say "推送 $BRANCH 到 origin（当前提交 $LOCAL_COMMIT）"
 git push origin "$BRANCH"
 
-# 3. 服务器：记录旧版本 -> 拉取 -> 依赖 -> 重启
+# 3. 服务器：记录旧版本 -> 拉取 -> 依赖 -> 升级配置 -> 重启
 say "服务器拉取最新代码并重启服务"
 ssh "$SERVER" "set -e
   cd $APP_DIR
@@ -49,6 +49,24 @@ ssh "$SERVER" "set -e
   sudo -u $GIT_USER git fetch origin
   sudo -u $GIT_USER git reset --hard origin/$BRANCH
   sudo -u $GIT_USER -H $APP_DIR/.venv/bin/pip install -q -r backend/requirements.txt
+
+  ENV_FILE=/etc/activity-timeline.env
+  touch \"\$ENV_FILE\"
+  chmod 600 \"\$ENV_FILE\"
+  grep -q '^ACTIVITYWATCH_DEBUG_VIEW=' \"\$ENV_FILE\" || echo 'ACTIVITYWATCH_DEBUG_VIEW=1' >> \"\$ENV_FILE\"
+  grep -q '^QQ_EMAIL=' \"\$ENV_FILE\" || echo 'QQ_EMAIL=' >> \"\$ENV_FILE\"
+  grep -q '^QQ_EMAIL_AUTH_CODE=' \"\$ENV_FILE\" || echo 'QQ_EMAIL_AUTH_CODE=' >> \"\$ENV_FILE\"
+  grep -q '^QQ_IMAP_HOST=' \"\$ENV_FILE\" || echo 'QQ_IMAP_HOST=imap.qq.com' >> \"\$ENV_FILE\"
+  grep -q '^QQ_IMAP_PORT=' \"\$ENV_FILE\" || echo 'QQ_IMAP_PORT=993' >> \"\$ENV_FILE\"
+  grep -q '^QQ_IMAP_MAILBOX=' \"\$ENV_FILE\" || echo 'QQ_IMAP_MAILBOX=INBOX' >> \"\$ENV_FILE\"
+  grep -q '^RECRUITMENT_AUTO_SCAN=' \"\$ENV_FILE\" || echo 'RECRUITMENT_AUTO_SCAN=1' >> \"\$ENV_FILE\"
+  grep -q '^RECRUITMENT_SCAN_INTERVAL_SECONDS=' \"\$ENV_FILE\" || echo 'RECRUITMENT_SCAN_INTERVAL_SECONDS=600' >> \"\$ENV_FILE\"
+
+  SERVICE_FILE=/etc/systemd/system/$SERVICE.service
+  if grep -q 'backend.app.main:app' \"\$SERVICE_FILE\"; then
+    sed -i 's/backend\.app\.main:app/backend.app.recruitment_entry:app/g' \"\$SERVICE_FILE\"
+  fi
+  systemctl daemon-reload
   systemctl restart $SERVICE"
 
 # 4. 健康检查（带超时重试）
@@ -69,5 +87,10 @@ done
 SERVICE_STATE=$(ssh "$SERVER" "systemctl is-active $SERVICE")
 [ "$SERVICE_STATE" = "active" ] || die "服务状态异常: $SERVICE_STATE"
 
+MAIL_STATE=$(ssh "$SERVER" "if grep -Eq '^QQ_EMAIL=.+$' /etc/activity-timeline.env && grep -Eq '^QQ_EMAIL_AUTH_CODE=.+$' /etc/activity-timeline.env; then echo configured; else echo missing; fi")
+
 printf '\n✅ 部署完成：%s\n' "$(git log -1 --pretty=format:'%h %s')"
-printf '   入口: %s （服务 %s，数据库与令牌未变动）\n' "$BASE_URL" "$SERVICE"
+printf '   入口: %s （服务 %s，数据库与访问令牌未变动）\n' "$BASE_URL" "$SERVICE"
+if [ "$MAIL_STATE" != "configured" ]; then
+  printf '   ⚠ QQ 邮箱尚未配置完整：请在服务器 /etc/activity-timeline.env 填写 QQ_EMAIL 和 QQ_EMAIL_AUTH_CODE 后重启服务。\n'
+fi
