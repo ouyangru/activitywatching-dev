@@ -6,139 +6,126 @@
   <meta name="theme-color" content="#071311">
   <title>Personal Hub · 总控台</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%23071311'/%3E%3Cpath d='M17 19h30v26H17z' fill='none' stroke='%2391e5b6' stroke-width='4'/%3E%3Cpath d='M23 26h18M23 33h11M23 40h15' stroke='%23e8fff2' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/static/hub.css?v=20260911-1">
+  <link rel="stylesheet" href="/static/hub.css?v=20260911-2">
 </head>
 <body>
   <div class="ambient ambient-one"></div>
   <div class="ambient ambient-two"></div>
   <div class="noise"></div>
 
-  <main class="hub-shell">
-    <header class="hub-topbar">
-      <a class="hub-brand" href="/hub" aria-label="返回总控台">
-        <span class="hub-logo"><i></i><i></i><i></i></span>
-        <span>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Personal Hub 导航">
+      <a class="sidebar-brand" href="#home" data-section="home" aria-label="返回总控台">
+        <span class="hub-logo" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="brand-copy">
           <strong>PERSONAL HUB</strong>
           <small>Ouyang's workspace</small>
         </span>
       </a>
-      <nav class="hub-nav" aria-label="主导航">
-        <a class="is-active" href="/hub">总控</a>
-        <a href="/">行迹</a>
-        <a href="/daily">日报</a>
-        <a href="/compare">趋势</a>
-        <a href="https://my-interview-notes.aosikagirl23.workers.dev" target="_blank" rel="noreferrer">知识库</a>
+
+      <nav class="sidebar-nav">
+        <p class="nav-group-label">Workspace</p>
+        <a href="#home" data-section="home"><span class="nav-icon">⌂</span><span>总控</span></a>
+        <a href="#activity" data-section="activity"><span class="nav-icon">◫</span><span>行迹</span></a>
+        <a href="#daily" data-section="daily"><span class="nav-icon">◷</span><span>日报</span></a>
+        <a href="#compare" data-section="compare"><span class="nav-icon">⌁</span><span>趋势</span></a>
+
+        <p class="nav-group-label">Growth</p>
+        <a href="#interview" data-section="interview"><span class="nav-icon">▤</span><span>秋招面经</span></a>
+        <a href="#recruiting" data-section="recruiting"><span class="nav-icon">◇</span><span>秋招事务</span></a>
+        <a href="#projects" data-section="projects"><span class="nav-icon">◈</span><span>项目与工具</span></a>
       </nav>
-      <div class="hub-status" id="hubStatus"><span></span><b>正在同步</b></div>
-    </header>
 
-    <section class="hub-hero">
-      <div>
-        <p class="eyebrow">PERSONAL OPERATING SYSTEM · 总控台</p>
-        <h1>把今天的时间、秋招和知识增长放在一个入口。</h1>
-        <p class="hero-copy">这里不替代现有系统，只负责统一入口与状态概览。Activity 继续负责记录，Interview KB 继续负责知识沉淀。</p>
+      <div class="sidebar-footer">
+        <div class="hub-status" id="hubStatus"><span></span><b>正在同步</b></div>
+        <small>Activity + Knowledge + Recruiting</small>
       </div>
-      <aside class="hero-clock">
-        <span id="hubDate">—</span>
-        <strong id="hubTime">--:--</strong>
-        <small id="hubWeekday">—</small>
-      </aside>
-    </section>
+    </aside>
 
-    <section class="signal-strip" aria-label="今日状态">
-      <article>
-        <span>今日已覆盖</span>
-        <strong id="trackedTime">—</strong>
-        <small>来自 Activity Timeline</small>
-      </article>
-      <article>
-        <span>学习 + 工作</span>
-        <strong id="focusRate">—</strong>
-        <small id="focusTime">等待数据</small>
-      </article>
-      <article>
-        <span>最长专注</span>
-        <strong id="longestFocus">—</strong>
-        <small>今日连续专注片段</small>
-      </article>
-      <article>
-        <span>当前状态</span>
-        <strong id="currentCategory">—</strong>
-        <small id="currentBehavior">等待活动记录</small>
-      </article>
-    </section>
-
-    <section class="workspace-grid" aria-label="工作区入口">
-      <a class="workspace-card card-activity" href="/">
-        <div class="card-head"><span class="card-index">01</span><span class="card-badge">LIVE</span></div>
-        <div class="card-icon activity-icon" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-        <div class="card-copy">
-          <p class="eyebrow">ACTIVITY</p>
-          <h2>行迹 · 活动监控</h2>
-          <p>查看今天做了什么、时间花在哪、有哪些空闲与未记录区间。</p>
+    <main class="app-main">
+      <header class="shell-topbar">
+        <div class="section-heading">
+          <p class="eyebrow" id="sectionEyebrow">PERSONAL OPERATING SYSTEM</p>
+          <h1 id="sectionTitle">总控台</h1>
+          <p id="sectionSubtitle">时间、知识与秋招状态的统一入口。</p>
         </div>
-        <div class="card-footer"><span>总览 · 日报 · 多日趋势</span><b>进入 →</b></div>
-      </a>
-
-      <a class="workspace-card card-interview" href="https://my-interview-notes.aosikagirl23.workers.dev" target="_blank" rel="noreferrer">
-        <div class="card-head"><span class="card-index">02</span><span class="card-badge">KB</span></div>
-        <div class="card-icon interview-icon" aria-hidden="true"><i></i><i></i><i></i></div>
-        <div class="card-copy">
-          <p class="eyebrow">INTERVIEW KNOWLEDGE</p>
-          <h2>秋招面经 · 个人知识库</h2>
-          <p>保留原始资料，用增量知识节点记录我的理解、答错点和真实面试追问。</p>
+        <div class="topbar-actions">
+          <button id="openStandalone" class="standalone-button" type="button" hidden>独立打开 ↗</button>
+          <div class="compact-clock">
+            <strong id="hubTime">--:--</strong>
+            <span><b id="hubDate">—</b> · <b id="hubWeekday">—</b></span>
+          </div>
         </div>
-        <div class="card-footer"><span>OS · C++ · 网络 · 项目</span><b>继续复习 ↗</b></div>
-      </a>
+      </header>
 
-      <section class="workspace-card card-recruiting" aria-labelledby="recruitingTitle">
-        <div class="card-head"><span class="card-index">03</span><span class="card-badge muted">NEXT</span></div>
-        <div class="card-icon recruit-icon" aria-hidden="true"><i></i><i></i><i></i></div>
-        <div class="card-copy">
-          <p class="eyebrow">AUTUMN RECRUITING</p>
-          <h2 id="recruitingTitle">秋招事务</h2>
-          <p>预留给笔试、面试、截止日期和待跟进事项。后续可以直接接你的邮件提醒与日历。</p>
+      <section id="homeView" class="route-view home-view">
+        <section class="hub-hero">
+          <div>
+            <p class="eyebrow">TODAY · 当前阶段</p>
+            <h2>把今天的时间、秋招和知识增长放在一个入口。</h2>
+            <p class="hero-copy">总控台只负责组织和路由。活动数据继续由行迹维护，面试知识继续留在 Markdown / Git 中，页面切换时总控外壳保持不变。</p>
+          </div>
+          <div class="hero-orbit" aria-hidden="true"><span></span><i></i><b></b></div>
+        </section>
+
+        <section class="signal-strip" aria-label="今日状态">
+          <article><span>今日已覆盖</span><strong id="trackedTime">—</strong><small>来自 Activity Timeline</small></article>
+          <article><span>学习 + 工作</span><strong id="focusRate">—</strong><small id="focusTime">等待数据</small></article>
+          <article><span>最长专注</span><strong id="longestFocus">—</strong><small>今日连续专注片段</small></article>
+          <article><span>当前状态</span><strong id="currentCategory">—</strong><small id="currentBehavior">等待活动记录</small></article>
+        </section>
+
+        <section class="workspace-grid" aria-label="工作区入口">
+          <a class="workspace-card card-activity" href="#activity" data-section="activity">
+            <div class="card-head"><span class="card-index">01</span><span class="card-badge">LIVE</span></div>
+            <div class="card-icon activity-icon" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+            <div class="card-copy"><p class="eyebrow">ACTIVITY</p><h2>行迹 · 活动监控</h2><p>在总控台内部查看今日时间线、设备活动与分类分布，不再离开当前外壳。</p></div>
+            <div class="card-footer"><span>总览 · 日报 · 多日趋势</span><b>进入 →</b></div>
+          </a>
+
+          <a class="workspace-card card-interview" href="#interview" data-section="interview">
+            <div class="card-head"><span class="card-index">02</span><span class="card-badge violet">KB</span></div>
+            <div class="card-icon interview-icon" aria-hidden="true"><i></i><i></i><i></i></div>
+            <div class="card-copy"><p class="eyebrow">INTERVIEW KNOWLEDGE</p><h2>秋招面经 · 个人知识库</h2><p>原始资料作为基底，用增量知识节点记录自己的理解、答错点和真实面试追问。</p></div>
+            <div class="card-footer"><span>OS · C++ · 网络 · 项目</span><b>继续复习 →</b></div>
+          </a>
+
+          <a class="workspace-card card-recruiting" href="#recruiting" data-section="recruiting">
+            <div class="card-head"><span class="card-index">03</span><span class="card-badge amber">NEXT</span></div>
+            <div class="card-icon recruit-icon" aria-hidden="true"><i></i><i></i><i></i></div>
+            <div class="card-copy"><p class="eyebrow">AUTUMN RECRUITING</p><h2>秋招事务</h2><p>统一承载笔试、面试、截止日期和待跟进事项，后续可以继续接邮件与日历。</p></div>
+            <div class="card-footer"><span>Deadline · 面试 · 待跟进</span><b>查看 →</b></div>
+          </a>
+
+          <a class="workspace-card card-projects" href="#projects" data-section="projects">
+            <div class="card-head"><span class="card-index">04</span><span class="card-badge cyan">DEV</span></div>
+            <div class="card-icon project-icon" aria-hidden="true"><i></i><i></i><i></i></div>
+            <div class="card-copy"><p class="eyebrow">PROJECTS</p><h2>项目与工具</h2><p>集中个人项目入口，后续可以扩展 AI Infra 学习、服务器状态和项目进度。</p></div>
+            <div class="card-footer"><span>Activity · Interview KB · More</span><b>查看 →</b></div>
+          </a>
+        </section>
+      </section>
+
+      <section id="frameView" class="route-view frame-view" hidden>
+        <div class="workspace-toolbar">
+          <div><span id="workspaceLabel">Workspace</span><strong id="workspaceTitle">正在打开</strong></div>
+          <div class="workspace-toolbar-actions">
+            <button id="reloadFrame" type="button">重新加载</button>
+            <button id="frameStandalone" type="button">新标签打开 ↗</button>
+          </div>
         </div>
-        <div class="mini-actions">
-          <a href="/daily">今日复盘</a>
-          <a href="https://github.com/ouyangru/my-interview-notes" target="_blank" rel="noreferrer">面经仓库 ↗</a>
+        <div class="frame-shell">
+          <div id="frameLoading" class="frame-loading"><span></span><p>正在加载工作区…</p></div>
+          <iframe id="workspaceFrame" title="Personal Hub 工作区" referrerpolicy="no-referrer"></iframe>
         </div>
       </section>
 
-      <section class="workspace-card card-projects" aria-labelledby="projectsTitle">
-        <div class="card-head"><span class="card-index">04</span><span class="card-badge muted">DEV</span></div>
-        <div class="card-icon project-icon" aria-hidden="true"><i></i><i></i><i></i></div>
-        <div class="card-copy">
-          <p class="eyebrow">PROJECTS</p>
-          <h2 id="projectsTitle">项目与工具</h2>
-          <p>把分散的个人工具集中到一个入口，后续可以继续接 AI Infra 学习、项目进度和服务器状态。</p>
-        </div>
-        <div class="mini-actions">
-          <a href="https://github.com/ouyangru/activitywatching-dev" target="_blank" rel="noreferrer">Activity Repo ↗</a>
-          <a href="https://github.com/ouyangru/my-interview-notes" target="_blank" rel="noreferrer">Interview Repo ↗</a>
-        </div>
+      <section id="placeholderView" class="route-view placeholder-view" hidden>
+        <div id="placeholderContent"></div>
       </section>
-    </section>
+    </main>
+  </div>
 
-    <section class="quick-panel">
-      <div>
-        <p class="eyebrow">QUICK ACCESS</p>
-        <h2>常用入口</h2>
-      </div>
-      <div class="quick-links">
-        <a href="/daily"><span>Daily</span><b>今日复盘</b></a>
-        <a href="/compare"><span>Trend</span><b>最近趋势</b></a>
-        <a href="/devlog"><span>Dev</span><b>开发视图</b></a>
-        <a href="https://my-interview-notes.aosikagirl23.workers.dev/knowledge/" target="_blank" rel="noreferrer"><span>KB</span><b>个人知识层</b></a>
-      </div>
-    </section>
-
-    <footer class="hub-footer">
-      <span>Personal Hub v0.1</span>
-      <span>Activity data stays in Activity Timeline · Knowledge stays in Markdown/Git</span>
-    </footer>
-  </main>
-
-  <script src="/static/hub.js?v=20260911-1" defer></script>
+  <script src="/static/hub.js?v=20260911-2" defer></script>
 </body>
 </html>
