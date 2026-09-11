@@ -6,7 +6,10 @@ from backend.app.recruitment_feishu import (
     match_company_record,
     resolve_field_mapping,
 )
-from backend.app.recruitment_feishu_queue import backfill_recruitment_feishu_proposals
+from backend.app.recruitment_feishu_queue import (
+    _infer_mail_stage,
+    backfill_recruitment_feishu_proposals,
+)
 
 
 def test_infer_recruitment_stage_prefers_specific_round():
@@ -14,6 +17,7 @@ def test_infer_recruitment_stage_prefers_specific_round():
     assert infer_recruitment_stage("字节跳动 HR 面试通知") == "HR面"
     assert infer_recruitment_stage("在线测评邀请") == "测评"
     assert infer_recruitment_stage("招聘流程终止通知") == "流程结束"
+    assert _infer_mail_stage("某公司第4轮面试邀请", "") == "4面"
 
 
 def test_company_match_requires_unique_record():
