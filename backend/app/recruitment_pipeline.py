@@ -127,6 +127,8 @@ def extract_pipeline_metadata(subject: str, body: str = "") -> dict[str, str]:
 
 def stage_date_field(stage: str | None) -> str | None:
     normalized = (stage or "").strip().lower()
+    if normalized in {"已投递", "投递", "网申", "application", "applied"}:
+        return PIPELINE_FIELDS["application_date"]
     if normalized in {"测评", "assessment"}:
         return PIPELINE_FIELDS["assessment_date"]
     if normalized in {"笔试", "written test"}:
@@ -159,8 +161,11 @@ def build_mail_pipeline_fields(item: dict[str, Any], stage: str, subject: str) -
     put(PIPELINE_FIELDS["priority"], item.get("priority"))
     put(PIPELINE_FIELDS["status"], stage)
 
-    event_at = item.get("start_at") or item.get("deadline_at")
     date_field = stage_date_field(stage)
+    event_at = item.get("start_at") or item.get("deadline_at")
+    if date_field == PIPELINE_FIELDS["application_date"] and not event_at:
+        # “申请/投递成功”邮件一般没有预约时间；邮件接收时间可作为本次投递被确认的时间。
+        event_at = item.get("source_received_at")
     if date_field and event_at:
         put(date_field, event_at)
 
