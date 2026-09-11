@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 from pathlib import Path
@@ -9,6 +10,7 @@ from fastapi import APIRouter, Depends
 
 from .recruitment_feishu import (
     _now_iso,
+    canonical_mail_fields,
     ensure_recruitment_feishu_tables,
     infer_recruitment_stage,
 )
@@ -66,12 +68,13 @@ def backfill_recruitment_feishu_proposals(db_path: Path) -> dict[str, int]:
                 continue
             next_at = item.get("start_at") or item.get("deadline_at")
             latest_update = subject.strip() or item.get("title") or stage
+            proposed_fields = canonical_mail_fields(item, subject, context, stage)
             cursor = connection.execute(
                 """
                 INSERT OR IGNORE INTO recruitment_feishu_proposals(
                     recruitment_item_id, source, company, stage, latest_update, next_at,
                     source_title, fields_json, status, created_at, updated_at
-                ) VALUES (?, 'mail', ?, ?, ?, ?, ?, '{}', 'pending', ?, ?)
+                ) VALUES (?, 'mail', ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
                 """,
                 (
                     item["id"],
@@ -80,6 +83,7 @@ def backfill_recruitment_feishu_proposals(db_path: Path) -> dict[str, int]:
                     latest_update[:512],
                     next_at,
                     subject[:512],
+                    json.dumps(proposed_fields, ensure_ascii=False),
                     now,
                     now,
                 ),
