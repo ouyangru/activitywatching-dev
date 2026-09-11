@@ -7,7 +7,7 @@
   <title>行迹 · 秋招事项</title>
   <link rel="stylesheet" href="/static/styles.css?v=20260909-2">
   <link rel="stylesheet" href="/static/design.css?v=20260909-4">
-  <link rel="stylesheet" href="/static/recruitment.css?v=20260911-2">
+  <link rel="stylesheet" href="/static/recruitment.css?v=20260911-3">
 </head>
 <body>
   <div class="ambient ambient-one"></div>
@@ -29,7 +29,7 @@
       <div>
         <p class="eyebrow">RECRUITMENT CONTROL CENTER</p>
         <h1>秋招事项</h1>
-        <p class="hero-meta">QQ 邮箱负责采集，网页负责确认与管理；Google Calendar 只作为提醒出口。</p>
+        <p class="hero-meta">QQ 邮箱负责采集，网页负责确认与管理；已完成和已取消分别归档，不再干扰待办与截止提醒。</p>
       </div>
       <div class="recruitment-actions">
         <button id="scanMailButton" class="ghost-button" type="button">立即检查 QQ 邮箱</button>
@@ -51,6 +51,7 @@
         <button class="view-switch-button is-active" type="button" data-recruitment-filter="active">待处理</button>
         <button class="view-switch-button" type="button" data-recruitment-filter="uncertain">待确认</button>
         <button class="view-switch-button" type="button" data-recruitment-filter="done">已完成</button>
+        <button class="view-switch-button" type="button" data-recruitment-filter="cancelled">已取消</button>
         <button class="view-switch-button" type="button" data-recruitment-filter="all">全部</button>
       </div>
     </section>
@@ -116,6 +117,6 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="/static/ui.js?v=20260910-2" defer></script>
-  <script src="/static/recruitment.js?v=20260911-2" defer></script>
+  <script src="/static/recruitment.js?v=20260911-3" defer></script>
 </body>
 </html>
