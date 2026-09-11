@@ -15,6 +15,7 @@
   let allItems = [];
   let mailConfig = null;
   let editingStatus = 'pending';
+  let editingItem = null;
 
   const typeLabel = { written_test: '笔试', assessment: '测评', interview: '面试', other: '其他' };
   const modeLabel = { fixed_time: '固定时间', deadline: '截止事项', uncertain: '待确认' };
@@ -99,6 +100,7 @@
         item.status === 'cancelled' ? 'is-cancelled' : '',
       ].filter(Boolean).join(' ');
       const timePrefix = item.mode === 'fixed_time' ? '开始' : item.mode === 'deadline' ? '截止' : '待确认';
+      const googleBadge = item.calendar_event_id ? '<span class="recruitment-badge">Google 已同步</span>' : '';
       return `
         <article class="${classes}">
           <div class="recruitment-card-head">
@@ -108,6 +110,7 @@
               <div class="recruitment-badges">
                 <span class="recruitment-badge emphasis status-${escapeHtml(item.status)}">${escapeHtml(statusLabel[item.status] || item.status)}</span>
                 <span class="recruitment-badge">${escapeHtml(modeLabel[item.mode] || item.mode)}</span>
+                ${googleBadge}
               </div>
             </div>
             <div class="recruitment-time"><small>${timePrefix}</small><strong>${escapeHtml(formatDate(rawTime))}</strong></div>
@@ -178,11 +181,20 @@
   }
 
   async function updateStatus(item, status) {
-    await api(`/api/v1/recruitment/items/${item.id}`, {
+    return api(`/api/v1/recruitment/items/${item.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status }),
     });
+  }
+
+  async function syncIfLinked(item) {
+    if (!item?.calendar_event_id) return;
+    try {
+      await api(`/api/v1/recruitment/calendar/items/${item.id}/sync`, { method: 'POST' });
+    } catch (error) {
+      showToast(`本地已更新，但 Google 同步失败：${error.message}`);
+    }
   }
 
   async function loadAll() {
@@ -216,6 +228,7 @@
       const result = await api('/api/v1/recruitment/scan', { method: 'POST' });
       showToast(`新增 ${result.imported} 条，待确认 ${result.uncertain} 条`);
       await loadAll();
+      window.dispatchEvent(new CustomEvent('recruitment:changed'));
     } catch (error) {
       stateEl.textContent = `检查邮箱失败：${error.message}`;
     } finally {
@@ -226,6 +239,7 @@
 
   function openEdit(item) {
     editingStatus = item.status || 'pending';
+    editingItem = item;
     document.getElementById('editRecruitmentId').value = item.id;
     document.getElementById('editCompany').value = item.company || '';
     document.getElementById('editTitle').value = item.title || '';
@@ -261,9 +275,11 @@
     try {
       if (button.dataset.action === 'complete') {
         await updateStatus(item, 'done');
+        await syncIfLinked(item);
         showToast('已标记完成');
       } else if (button.dataset.action === 'cancel') {
         await updateStatus(item, 'cancelled');
+        await syncIfLinked(item);
         showToast('事项已取消，可在“已取消”中恢复');
       } else if (button.dataset.action === 'restore') {
         await updateStatus(item, item.mode === 'uncertain' ? 'uncertain' : 'pending');
@@ -273,6 +289,7 @@
         return;
       }
       await loadAll();
+      window.dispatchEvent(new CustomEvent('recruitment:changed'));
     } catch (error) {
       button.disabled = false;
       showToast(`操作失败：${error.message}`);
@@ -295,14 +312,17 @@
       action_url: document.getElementById('editUrl').value.trim() || null,
     };
     try {
-      await api(`/api/v1/recruitment/items/${id}`, {
+      const result = await api(`/api/v1/recruitment/items/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
+      if (editingItem?.calendar_event_id) await syncIfLinked(result.item || editingItem);
       dialog.close();
+      editingItem = null;
       showToast('事项已更新');
       await loadAll();
+      window.dispatchEvent(new CustomEvent('recruitment:changed'));
     } catch (error) {
       showToast(`保存失败：${error.message}`);
     }
@@ -311,5 +331,8 @@
   document.getElementById('cancelRecruitmentEdit').addEventListener('click', () => dialog.close());
   scanButton.addEventListener('click', scanMail);
   refreshButton.addEventListener('click', loadAll);
+  window.addEventListener('recruitment:changed', () => {
+    if (!document.hidden && !document.getElementById('recruitmentListView')?.hidden) loadAll();
+  });
   loadAll();
 })();

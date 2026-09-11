@@ -61,6 +61,10 @@ ssh "$SERVER" "set -e
   grep -q '^QQ_IMAP_MAILBOX=' \"\$ENV_FILE\" || echo 'QQ_IMAP_MAILBOX=INBOX' >> \"\$ENV_FILE\"
   grep -q '^RECRUITMENT_AUTO_SCAN=' \"\$ENV_FILE\" || echo 'RECRUITMENT_AUTO_SCAN=1' >> \"\$ENV_FILE\"
   grep -q '^RECRUITMENT_SCAN_INTERVAL_SECONDS=' \"\$ENV_FILE\" || echo 'RECRUITMENT_SCAN_INTERVAL_SECONDS=600' >> \"\$ENV_FILE\"
+  grep -q '^GOOGLE_CALENDAR_CLIENT_ID=' \"\$ENV_FILE\" || echo 'GOOGLE_CALENDAR_CLIENT_ID=' >> \"\$ENV_FILE\"
+  grep -q '^GOOGLE_CALENDAR_CLIENT_SECRET=' \"\$ENV_FILE\" || echo 'GOOGLE_CALENDAR_CLIENT_SECRET=' >> \"\$ENV_FILE\"
+  grep -q '^GOOGLE_CALENDAR_ID=' \"\$ENV_FILE\" || echo 'GOOGLE_CALENDAR_ID=primary' >> \"\$ENV_FILE\"
+  grep -q '^GOOGLE_CALENDAR_REDIRECT_URI=' \"\$ENV_FILE\" || echo 'GOOGLE_CALENDAR_REDIRECT_URI=' >> \"\$ENV_FILE\"
 
   SERVICE_FILE=/etc/systemd/system/$SERVICE.service
   if grep -q 'backend.app.main:app' \"\$SERVICE_FILE\"; then
@@ -88,9 +92,13 @@ SERVICE_STATE=$(ssh "$SERVER" "systemctl is-active $SERVICE")
 [ "$SERVICE_STATE" = "active" ] || die "服务状态异常: $SERVICE_STATE"
 
 MAIL_STATE=$(ssh "$SERVER" "if grep -Eq '^QQ_EMAIL=.+$' /etc/activity-timeline.env && grep -Eq '^QQ_EMAIL_AUTH_CODE=.+$' /etc/activity-timeline.env; then echo configured; else echo missing; fi")
+GOOGLE_STATE=$(ssh "$SERVER" "if grep -Eq '^GOOGLE_CALENDAR_CLIENT_ID=.+$' /etc/activity-timeline.env && grep -Eq '^GOOGLE_CALENDAR_CLIENT_SECRET=.+$' /etc/activity-timeline.env; then echo configured; else echo missing; fi")
 
 printf '\n✅ 部署完成：%s\n' "$(git log -1 --pretty=format:'%h %s')"
 printf '   入口: %s （服务 %s，数据库与访问令牌未变动）\n' "$BASE_URL" "$SERVICE"
 if [ "$MAIL_STATE" != "configured" ]; then
   printf '   ⚠ QQ 邮箱尚未配置完整：请在服务器 /etc/activity-timeline.env 填写 QQ_EMAIL 和 QQ_EMAIL_AUTH_CODE 后重启服务。\n'
+fi
+if [ "$GOOGLE_STATE" != "configured" ]; then
+  printf '   ℹ Google Calendar 尚未配置：本地日历可正常使用；需要同步时再填写 GOOGLE_CALENDAR_CLIENT_ID / GOOGLE_CALENDAR_CLIENT_SECRET / GOOGLE_CALENDAR_REDIRECT_URI。\n'
 fi
