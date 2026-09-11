@@ -12,6 +12,8 @@ from fastapi.responses import FileResponse, RedirectResponse
 from .main import DEFAULT_DB, STATIC_DIR, create_app
 from .recruitment import build_recruitment_router, scan_qq_mail
 from .recruitment_calendar import build_recruitment_calendar_router
+from .recruitment_feishu import build_recruitment_feishu_router
+from .recruitment_feishu_queue import build_recruitment_feishu_queue_router
 
 
 LOG = logging.getLogger("activitywatch.recruitment")
@@ -39,6 +41,8 @@ def require_recruitment_auth(
 db_path = Path(os.getenv("ACTIVITYWATCH_DB_PATH", str(DEFAULT_DB)))
 app.include_router(build_recruitment_router(db_path, require_recruitment_auth))
 app.include_router(build_recruitment_calendar_router(db_path, require_recruitment_auth))
+app.include_router(build_recruitment_feishu_router(db_path, require_recruitment_auth))
+app.include_router(build_recruitment_feishu_queue_router(db_path, require_recruitment_auth))
 
 
 @app.get("/api/v1/recruitment/config-status")
@@ -85,6 +89,21 @@ def _recruitment_page(request: Request, token: str | None) -> Response:
     return FileResponse(STATIC_DIR / "recruitment.html")
 
 
+def _recruitment_progress_page(request: Request, token: str | None) -> Response:
+    production = os.getenv("ACTIVITYWATCH_ENV", "development") == "production"
+    configured_token = app.state.api_token
+    if production:
+        try:
+            require_recruitment_auth(request, request.cookies.get("activity_token"))
+        except HTTPException:
+            return RedirectResponse("/login", status_code=303)
+    if not production and token and configured_token and secrets.compare_digest(token, configured_token):
+        response = RedirectResponse(request.url.path, status_code=303)
+        response.set_cookie("activity_token", token, httponly=True, samesite="lax")
+        return response
+    return FileResponse(STATIC_DIR / "recruitment-progress.html")
+
+
 @app.get("/recruitment", include_in_schema=False)
 def recruitment_page(request: Request, token: str | None = Query(default=None)) -> Response:
     return _recruitment_page(request, token)
@@ -93,6 +112,11 @@ def recruitment_page(request: Request, token: str | None = Query(default=None)) 
 @app.get("/recruitment/calendar", include_in_schema=False)
 def recruitment_calendar_page(request: Request, token: str | None = Query(default=None)) -> Response:
     return _recruitment_page(request, token)
+
+
+@app.get("/recruitment/progress", include_in_schema=False)
+def recruitment_progress_page(request: Request, token: str | None = Query(default=None)) -> Response:
+    return _recruitment_progress_page(request, token)
 
 
 async def _recruitment_poll_loop() -> None:
