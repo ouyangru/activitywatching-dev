@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from .main import DEFAULT_DB, STATIC_DIR, create_app
 from .recruitment import build_recruitment_router, scan_qq_mail
 from .recruitment_calendar import build_recruitment_calendar_router
+from .recruitment_calendar_bridge import install_recruitment_calendar_bridge
 from .recruitment_feishu import build_recruitment_feishu_router
 from .recruitment_feishu_cache import install_feishu_cache
 from .recruitment_feishu_queue import build_recruitment_feishu_queue_router
@@ -48,6 +49,9 @@ app.include_router(build_recruitment_router(db_path, require_recruitment_auth))
 app.include_router(build_recruitment_calendar_router(db_path, require_recruitment_auth))
 app.include_router(build_recruitment_feishu_router(db_path, require_recruitment_auth))
 app.include_router(build_recruitment_feishu_queue_router(db_path, require_recruitment_auth))
+# 招聘进度审核写入飞书后，同步落到 recruitment_items，供本地日历直接展示；
+# 已经关联过 Google 的本地事项被修改时也会异步更新原 Google Event。
+install_recruitment_calendar_bridge(app, db_path)
 
 
 @app.get("/api/v1/recruitment/config-status")
