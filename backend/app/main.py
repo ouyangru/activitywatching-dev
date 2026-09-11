@@ -687,6 +687,18 @@ def create_app(
             return redirect
         return FileResponse(STATIC_DIR / "index.html")
 
+    @application.get("/hub", include_in_schema=False)
+    def hub(request: Request, token: str | None = Query(default=None)) -> Response:
+        if production:
+            try:
+                require_auth(request, request.cookies.get("activity_token"))
+            except HTTPException:
+                return RedirectResponse("/login", status_code=303)
+        redirect = token_redirect("/hub", token)
+        if redirect:
+            return redirect
+        return FileResponse(STATIC_DIR / "hub.html")
+
     @application.get("/mobile", include_in_schema=False)
     def mobile(request: Request, token: str | None = Query(default=None)) -> Response:
         if production:
