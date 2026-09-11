@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#131a22">
+  <title>行迹 · 招聘进度</title>
+  <link rel="stylesheet" href="/static/styles.css?v=20260909-2">
+  <link rel="stylesheet" href="/static/design.css?v=20260909-4">
+  <link rel="stylesheet" href="/static/recruitment.css?v=20260911-3">
+  <link rel="stylesheet" href="/static/recruitment-feishu.css?v=20260911-1">
+</head>
+<body>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+  <main class="shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="行迹首页"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>行迹</span></a>
+      <nav class="topbar-nav">
+        <a class="nav-link" href="/hub">总控台</a>
+        <a class="nav-link" href="/recruitment">秋招事项</a>
+        <a class="nav-link is-active" href="/recruitment/progress">招聘进度</a>
+        <a class="nav-link" href="/recruitment/calendar">日历</a>
+      </nav>
+    </header>
+
+    <section class="hero recruitment-hero feishu-hero">
+      <div>
+        <p class="eyebrow">RECRUITMENT PIPELINE · FEISHU</p>
+        <h1>招聘进度</h1>
+        <p class="hero-meta">飞书多维表格是主数据源。网页只读取同一张表；所有修改先进入审核队列，只有点击“批准写入”后才会真正更新飞书。</p>
+      </div>
+      <div class="recruitment-actions">
+        <a id="feishuSourceLink" class="ghost-button" href="#" target="_blank" rel="noopener noreferrer" hidden>打开飞书原表</a>
+        <button id="feishuRefreshButton" class="ghost-button" type="button">刷新飞书</button>
+      </div>
+    </section>
+
+    <section class="stats recruitment-stats feishu-stats" aria-label="飞书招聘进度概览">
+      <article><span>飞书记录</span><strong id="feishuRecordCount">—</strong></article>
+      <article><span>待审核</span><strong id="feishuPendingCount">—</strong></article>
+      <article><span>已写入</span><strong id="feishuAppliedCount">—</strong></article>
+      <article><span>同步策略</span><strong class="feishu-policy">先审后写</strong></article>
+    </section>
+
+    <p id="feishuState" class="page-state" role="status" aria-live="polite">正在读取飞书配置…</p>
+
+    <section class="panel feishu-mapping-panel" aria-labelledby="mappingTitle">
+      <div class="panel-heading">
+        <div><p class="eyebrow">FIELD MAPPING</p><h2 id="mappingTitle">字段映射</h2></div>
+        <span class="recruitment-badge emphasis">只读检查</span>
+      </div>
+      <div id="feishuMapping" class="feishu-mapping"></div>
+    </section>
+
+    <div class="feishu-layout">
+      <section class="panel feishu-record-panel" aria-labelledby="recordTitle">
+        <div class="panel-heading">
+          <div><p class="eyebrow">SOURCE OF TRUTH</p><h2 id="recordTitle">飞书招聘总表</h2></div>
+          <span class="panel-note">网页修改不会直接写入，会先生成审核建议</span>
+        </div>
+        <div id="feishuTableShell" class="feishu-table-shell">
+          <div class="empty-recruitment">正在读取飞书记录…</div>
+        </div>
+      </section>
+
+      <aside class="panel feishu-review-panel" aria-labelledby="reviewTitle">
+        <div class="panel-heading">
+          <div><p class="eyebrow">REVIEW QUEUE</p><h2 id="reviewTitle">待审核变更</h2></div>
+          <button id="feishuBackfillButton" class="ghost-button" type="button">从邮件生成建议</button>
+        </div>
+        <div id="feishuProposalList" class="feishu-proposal-list">
+          <div class="empty-recruitment">正在读取审核队列…</div>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <dialog id="feishuEditDialog" class="correction-dialog feishu-edit-dialog">
+    <form id="feishuEditForm" method="dialog">
+      <div>
+        <p class="eyebrow">REVIEW BEFORE WRITE</p>
+        <h3 id="feishuEditTitle">修改招聘进度</h3>
+        <p class="dialog-help">保存后只会创建一条“待审核”建议，不会立即写入飞书。</p>
+      </div>
+      <input id="feishuEditRecordId" type="hidden">
+      <div id="feishuEditFields" class="feishu-edit-fields"></div>
+      <div class="correction-actions">
+        <button id="feishuEditCancel" class="ghost-button" type="button">取消</button>
+        <button class="ghost-button correction-save" type="submit">生成审核建议</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="/static/ui.js?v=20260910-2" defer></script>
+  <script src="/static/recruitment-feishu.js?v=20260911-1" defer></script>
+  <script src="/static/recruitment-feishu-normalize.js?v=20260911-1" defer></script>
+</body>
+</html>
