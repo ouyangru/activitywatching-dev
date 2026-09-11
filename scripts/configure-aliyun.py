@@ -26,7 +26,7 @@ def ensure_env_keys(path: pathlib.Path, defaults: dict[str, str]) -> None:
     if not missing:
         return
     suffix = "" if not current or current.endswith("\n") else "\n"
-    suffix += "\n# Recruitment / debug settings added by deployment upgrade\n"
+    suffix += "\n# Recruitment / calendar / debug settings added by deployment upgrade\n"
     suffix += "".join(f"{key}={value}\n" for key, value in missing)
     path.write_text(current + suffix, encoding="utf-8")
     path.chmod(0o600)
@@ -57,6 +57,10 @@ def configure():
             "QQ_IMAP_MAILBOX": "INBOX",
             "RECRUITMENT_AUTO_SCAN": "1",
             "RECRUITMENT_SCAN_INTERVAL_SECONDS": "600",
+            "GOOGLE_CALENDAR_CLIENT_ID": "",
+            "GOOGLE_CALENDAR_CLIENT_SECRET": "",
+            "GOOGLE_CALENDAR_ID": "primary",
+            "GOOGLE_CALENDAR_REDIRECT_URI": "",
         },
     )
     write("/etc/systemd/system/activity-timeline.service", """[Unit]
