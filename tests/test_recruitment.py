@@ -1,7 +1,11 @@
-from datetime import datetime
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
-from backend.app.recruitment import extract_recruitment_item, init_recruitment_db
+from backend.app.recruitment import (
+    _summarize_recruitment_items,
+    extract_recruitment_item,
+    init_recruitment_db,
+)
 
 
 def test_extract_absolute_deadline(monkeypatch):
@@ -61,6 +65,74 @@ def test_unknown_time_goes_to_confirmation(monkeypatch):
     assert item is not None
     assert item["mode"] == "uncertain"
     assert item["status"] == "uncertain"
+
+
+def test_summary_three_days_means_next_three_days_only():
+    tz = ZoneInfo("Asia/Shanghai")
+    items = [
+        {
+            "id": 1,
+            "status": "pending",
+            "item_type": "assessment",
+            "mode": "deadline",
+            "deadline_at": "2026-09-11T23:59:00+08:00",
+            "start_at": None,
+        },
+        {
+            "id": 2,
+            "status": "pending",
+            "item_type": "written_test",
+            "mode": "deadline",
+            "deadline_at": "2026-09-12",
+            "start_at": None,
+        },
+        {
+            "id": 3,
+            "status": "pending",
+            "item_type": "interview",
+            "mode": "fixed_time",
+            "deadline_at": None,
+            "start_at": "2026-09-14T14:00:00+08:00",
+        },
+        {
+            "id": 4,
+            "status": "pending",
+            "item_type": "assessment",
+            "mode": "deadline",
+            "deadline_at": "2026-09-15",
+            "start_at": None,
+        },
+        {
+            "id": 5,
+            "status": "uncertain",
+            "item_type": "assessment",
+            "mode": "uncertain",
+            "deadline_at": "2026-09-12",
+            "start_at": None,
+        },
+        {
+            "id": 6,
+            "status": "pending",
+            "item_type": "other",
+            "mode": "deadline",
+            "deadline_at": "2026-09-13",
+            "start_at": None,
+        },
+        {
+            "id": 7,
+            "status": "done",
+            "item_type": "interview",
+            "mode": "fixed_time",
+            "deadline_at": None,
+            "start_at": "2026-09-13T10:00:00+08:00",
+        },
+    ]
+
+    summary = _summarize_recruitment_items(items, date(2026, 9, 11), tz)
+
+    assert summary["today"] == 1
+    assert summary["three_days"] == 2
+    assert summary["uncertain"] == 1
 
 
 def test_recruitment_tables_initialize(tmp_path):
