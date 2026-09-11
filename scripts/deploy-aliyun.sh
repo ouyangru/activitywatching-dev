@@ -103,6 +103,17 @@ upgrade_current_server() {
   ensure_env_key_local GOOGLE_CALENDAR_CLIENT_SECRET ""
   ensure_env_key_local GOOGLE_CALENDAR_ID primary
   ensure_env_key_local GOOGLE_CALENDAR_REDIRECT_URI ""
+  ensure_env_key_local FEISHU_APP_ID ""
+  ensure_env_key_local FEISHU_APP_SECRET ""
+  ensure_env_key_local FEISHU_RECRUITMENT_APP_TOKEN ""
+  ensure_env_key_local FEISHU_RECRUITMENT_WIKI_TOKEN ""
+  ensure_env_key_local FEISHU_RECRUITMENT_TABLE_ID ""
+  ensure_env_key_local FEISHU_RECRUITMENT_VIEW_ID ""
+  ensure_env_key_local FEISHU_RECRUITMENT_SOURCE_URL ""
+  ensure_env_key_local FEISHU_RECRUITMENT_COMPANY_FIELD 公司
+  ensure_env_key_local FEISHU_RECRUITMENT_STAGE_FIELD 招聘进度
+  ensure_env_key_local FEISHU_RECRUITMENT_LATEST_FIELD 最新动态
+  ensure_env_key_local FEISHU_RECRUITMENT_NEXT_FIELD 下一节点
 
   local service_file="/etc/systemd/system/$SERVICE.service"
   if sudo grep -q 'backend.app.main:app' "$service_file"; then
@@ -139,6 +150,17 @@ else
     grep -q '^GOOGLE_CALENDAR_CLIENT_SECRET=' \"\$ENV_FILE\" || echo 'GOOGLE_CALENDAR_CLIENT_SECRET=' >> \"\$ENV_FILE\"
     grep -q '^GOOGLE_CALENDAR_ID=' \"\$ENV_FILE\" || echo 'GOOGLE_CALENDAR_ID=primary' >> \"\$ENV_FILE\"
     grep -q '^GOOGLE_CALENDAR_REDIRECT_URI=' \"\$ENV_FILE\" || echo 'GOOGLE_CALENDAR_REDIRECT_URI=' >> \"\$ENV_FILE\"
+    grep -q '^FEISHU_APP_ID=' \"\$ENV_FILE\" || echo 'FEISHU_APP_ID=' >> \"\$ENV_FILE\"
+    grep -q '^FEISHU_APP_SECRET=' \"\$ENV_FILE\" || echo 'FEISHU_APP_SECRET=' >> \"\$ENV_FILE\"
+    grep -q '^FEISHU_RECRUITMENT_APP_TOKEN=' \"\$ENV_FILE\" || echo 'FEISHU_RECRUITMENT_APP_TOKEN=' >> \"\$ENV_FILE\"
+    grep -q '^FEISHU_RECRUITMENT_WIKI_TOKEN=' \"\$ENV_FILE\" || echo 'FEISHU_RECRUITMENT_WIKI_TOKEN=' >> \"\$ENV_FILE\"
+    grep -q '^FEISHU_RECRUITMENT_TABLE_ID=' \"\$ENV_FILE\" || echo 'FEISHU_RECRUITMENT_TABLE_ID=' >> \"\$ENV_FILE\"
+    grep -q '^FEISHU_RECRUITMENT_VIEW_ID=' \"\$ENV_FILE\" || echo 'FEISHU_RECRUITMENT_VIEW_ID=' >> \"\$ENV_FILE\"
+    grep -q '^FEISHU_RECRUITMENT_SOURCE_URL=' \"\$ENV_FILE\" || echo 'FEISHU_RECRUITMENT_SOURCE_URL=' >> \"\$ENV_FILE\"
+    grep -q '^FEISHU_RECRUITMENT_COMPANY_FIELD=' \"\$ENV_FILE\" || echo 'FEISHU_RECRUITMENT_COMPANY_FIELD=公司' >> \"\$ENV_FILE\"
+    grep -q '^FEISHU_RECRUITMENT_STAGE_FIELD=' \"\$ENV_FILE\" || echo 'FEISHU_RECRUITMENT_STAGE_FIELD=招聘进度' >> \"\$ENV_FILE\"
+    grep -q '^FEISHU_RECRUITMENT_LATEST_FIELD=' \"\$ENV_FILE\" || echo 'FEISHU_RECRUITMENT_LATEST_FIELD=最新动态' >> \"\$ENV_FILE\"
+    grep -q '^FEISHU_RECRUITMENT_NEXT_FIELD=' \"\$ENV_FILE\" || echo 'FEISHU_RECRUITMENT_NEXT_FIELD=下一节点' >> \"\$ENV_FILE\"
 
     SERVICE_FILE=/etc/systemd/system/$SERVICE.service
     if grep -q 'backend.app.main:app' \"\$SERVICE_FILE\"; then
@@ -174,10 +196,12 @@ if [ "$SELF_DEPLOY" -eq 1 ]; then
   SERVICE_STATE="$(sudo systemctl is-active "$SERVICE")"
   MAIL_STATE="$(sudo sh -c "if grep -Eq '^QQ_EMAIL=.+$' /etc/activity-timeline.env && grep -Eq '^QQ_EMAIL_AUTH_CODE=.+$' /etc/activity-timeline.env; then echo configured; else echo missing; fi")"
   GOOGLE_STATE="$(sudo sh -c "if grep -Eq '^GOOGLE_CALENDAR_CLIENT_ID=.+$' /etc/activity-timeline.env && grep -Eq '^GOOGLE_CALENDAR_CLIENT_SECRET=.+$' /etc/activity-timeline.env; then echo configured; else echo missing; fi")"
+  FEISHU_STATE="$(sudo sh -c "if grep -Eq '^FEISHU_APP_ID=.+$' /etc/activity-timeline.env && grep -Eq '^FEISHU_APP_SECRET=.+$' /etc/activity-timeline.env && grep -Eq '^FEISHU_RECRUITMENT_TABLE_ID=.+$' /etc/activity-timeline.env && (grep -Eq '^FEISHU_RECRUITMENT_APP_TOKEN=.+$' /etc/activity-timeline.env || grep -Eq '^FEISHU_RECRUITMENT_WIKI_TOKEN=.+$' /etc/activity-timeline.env); then echo configured; else echo missing; fi")"
 else
   SERVICE_STATE="$(ssh "$SERVER" "systemctl is-active $SERVICE")"
   MAIL_STATE="$(ssh "$SERVER" "if grep -Eq '^QQ_EMAIL=.+$' /etc/activity-timeline.env && grep -Eq '^QQ_EMAIL_AUTH_CODE=.+$' /etc/activity-timeline.env; then echo configured; else echo missing; fi")"
   GOOGLE_STATE="$(ssh "$SERVER" "if grep -Eq '^GOOGLE_CALENDAR_CLIENT_ID=.+$' /etc/activity-timeline.env && grep -Eq '^GOOGLE_CALENDAR_CLIENT_SECRET=.+$' /etc/activity-timeline.env; then echo configured; else echo missing; fi")"
+  FEISHU_STATE="$(ssh "$SERVER" "if grep -Eq '^FEISHU_APP_ID=.+$' /etc/activity-timeline.env && grep -Eq '^FEISHU_APP_SECRET=.+$' /etc/activity-timeline.env && grep -Eq '^FEISHU_RECRUITMENT_TABLE_ID=.+$' /etc/activity-timeline.env && (grep -Eq '^FEISHU_RECRUITMENT_APP_TOKEN=.+$' /etc/activity-timeline.env || grep -Eq '^FEISHU_RECRUITMENT_WIKI_TOKEN=.+$' /etc/activity-timeline.env); then echo configured; else echo missing; fi")"
 fi
 [ "$SERVICE_STATE" = "active" ] || die "服务状态异常: $SERVICE_STATE"
 
@@ -188,4 +212,7 @@ if [ "$MAIL_STATE" != "configured" ]; then
 fi
 if [ "$GOOGLE_STATE" != "configured" ]; then
   printf '   ℹ Google Calendar 尚未配置：本地日历可正常使用；需要同步时再填写 GOOGLE_CALENDAR_CLIENT_ID / GOOGLE_CALENDAR_CLIENT_SECRET / GOOGLE_CALENDAR_REDIRECT_URI。\n'
+fi
+if [ "$FEISHU_STATE" != "configured" ]; then
+  printf '   ℹ 飞书招聘进度尚未配置：请在服务器 /etc/activity-timeline.env 填写 FEISHU_APP_ID / FEISHU_APP_SECRET / FEISHU_RECRUITMENT_TABLE_ID，并配置 APP_TOKEN 或 WIKI_TOKEN。\n'
 fi
