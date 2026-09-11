@@ -136,10 +136,264 @@
   resize: vertical;
 }
 
+/* Recruitment workspace: main table on the left, review queue on the right. */
+.feishu-document-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(360px, .78fr);
+  column-gap: 14px;
+  align-items: start;
+  max-width: 1760px;
+}
+
+.feishu-document-topbar,
+.feishu-document-header,
+.feishu-viewbar,
+.feishu-mapping-section {
+  grid-column: 1 / -1;
+}
+
+#recruitmentTable {
+  grid-column: 1;
+  min-width: 0;
+  margin-top: 18px;
+}
+
+#reviewQueue {
+  grid-column: 2;
+  min-width: 0;
+  margin-top: 18px;
+}
+
+#recruitmentTable .feishu-section-heading,
+#reviewQueue .feishu-section-heading {
+  min-height: 58px;
+  align-items: flex-start;
+}
+
+#recruitmentTable .feishu-section-heading p,
+#reviewQueue .feishu-section-heading p {
+  max-width: 680px;
+  line-height: 1.45;
+}
+
+/* Main grid: keep the important columns compact and let dates use abbreviated values. */
+.feishu-table-shell {
+  max-height: 68vh;
+}
+
+.feishu-table {
+  width: 100%;
+  min-width: 920px;
+  table-layout: fixed;
+}
+
+.feishu-table th,
+.feishu-table td {
+  min-width: 0;
+  max-width: none;
+  height: 34px;
+  padding: 5px 7px;
+  font-size: 11px;
+}
+
+.feishu-table th {
+  height: 32px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+.feishu-table .col-company { width: 104px; }
+.feishu-table .col-position { width: 132px; }
+.feishu-table .col-type { width: 66px; }
+.feishu-table .col-location { width: 68px; }
+.feishu-table .col-status { width: 84px; }
+.feishu-table .col-priority { width: 62px; }
+.feishu-table .col-date { width: 76px; }
+.feishu-table .col-note { width: 118px; }
+.feishu-table .col-default { width: 86px; }
+.feishu-table .feishu-action-cell { width: 58px !important; min-width: 58px !important; }
+
+/* Review queue becomes a compact card list in the narrow right rail. */
+#reviewQueue .feishu-proposal-table-shell {
+  max-height: 68vh;
+  overflow: auto;
+  border: 0;
+  background: transparent;
+}
+
+#reviewQueue .feishu-review-table {
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+#reviewQueue .feishu-review-table thead {
+  display: none;
+}
+
+#reviewQueue .feishu-review-table tbody {
+  display: grid;
+  gap: 8px;
+}
+
+#reviewQueue .feishu-review-table tr {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 5px 10px;
+  padding: 10px;
+  border: 1px solid var(--line, #344250);
+  border-radius: 6px;
+  background: var(--control, #17212b);
+}
+
+#reviewQueue .feishu-review-table td,
+#reviewQueue .feishu-review-table .feishu-review-action-cell {
+  position: static;
+  display: block;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  height: auto;
+  padding: 2px 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent !important;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  font-size: 11px;
+}
+
+#reviewQueue .feishu-review-table td::before {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--muted, #a5b5c4);
+  font-size: 9px;
+  line-height: 1.2;
+}
+
+#reviewQueue .feishu-review-table td:nth-child(1)::before { content: "公司"; }
+#reviewQueue .feishu-review-table td:nth-child(2)::before { content: "岗位"; }
+#reviewQueue .feishu-review-table td:nth-child(3)::before { content: "类型"; }
+#reviewQueue .feishu-review-table td:nth-child(4)::before { content: "地点"; }
+#reviewQueue .feishu-review-table td:nth-child(5)::before { content: "状态"; }
+#reviewQueue .feishu-review-table td:nth-child(6)::before { content: "阶段日期"; }
+#reviewQueue .feishu-review-table td:nth-child(7)::before { content: "写入方式"; }
+
+#reviewQueue .feishu-review-table td:nth-child(6),
+#reviewQueue .feishu-review-table td:nth-child(7),
+#reviewQueue .feishu-review-table td:nth-child(8) {
+  grid-column: 1 / -1;
+}
+
+#reviewQueue .feishu-review-actions-inline {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin-top: 3px;
+}
+
+/* Editor: no horizontal scrolling, two balanced columns, select-like controls. */
+.feishu-edit-dialog {
+  width: min(900px, calc(100vw - 32px));
+  max-width: 900px;
+  overflow-x: hidden;
+}
+
+.feishu-edit-dialog form {
+  width: 100%;
+  min-width: 0 !important;
+  max-width: 100%;
+  max-height: min(82vh, 820px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.feishu-edit-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 11px 14px;
+  min-width: 0;
+}
+
+.feishu-edit-fields > label {
+  min-width: 0;
+}
+
+.feishu-edit-fields .recruitment-input,
+.feishu-edit-fields input,
+.feishu-edit-fields select,
+.feishu-edit-fields textarea {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.feishu-edit-fields select.recruitment-input {
+  appearance: auto;
+  cursor: pointer;
+}
+
+.feishu-multi-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.feishu-multi-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--line, #344250);
+  border-radius: 5px;
+  background: var(--control, #17212b);
+  color: var(--muted, #a5b5c4);
+  font-size: 11px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.feishu-multi-option:has(input:checked) {
+  border-color: rgba(130, 206, 221, .55);
+  background: rgba(130, 206, 221, .08);
+  color: var(--accent-strong, #b5e6ef);
+}
+
+.feishu-multi-option input {
+  width: auto !important;
+  margin: 0;
+}
+
+.feishu-hidden-field {
+  display: none !important;
+}
+
+@media (max-width: 1120px) {
+  .feishu-document-shell {
+    display: block;
+  }
+
+  #recruitmentTable,
+  #reviewQueue {
+    margin-top: 20px;
+  }
+
+  #reviewQueue .feishu-proposal-table-shell {
+    max-height: none;
+  }
+}
+
 @media (max-width: 720px) {
+  .feishu-edit-fields {
+    grid-template-columns: 1fr !important;
+  }
+
   .feishu-review-table .feishu-review-action-cell {
-    min-width: 190px;
-    width: 190px;
+    min-width: 0;
+    width: auto;
   }
 
   .feishu-review-actions-inline {
