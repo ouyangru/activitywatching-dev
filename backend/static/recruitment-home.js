@@ -1,12 +1,16 @@
 (() => {
-  // Mobile browsers can occasionally surface a transient network failure as
-  // `TypeError: Failed to fetch`, especially when this dashboard fans out
-  // several same-origin GETs at once. A single failed request currently causes
-  // the whole overview to hide. Retry only idempotent same-origin GET requests;
-  // never retry mutations, so POST/PATCH/DELETE cannot be duplicated.
+  // The overview fans out many same-origin GETs (summary / timeline / insights,
+  // plus per-device distribution requests). On mobile networks, one transient
+  // transport failure currently makes Promise.all reject and hides the entire
+  // page. Install a small guard before app.js runs:
+  //   1) coalesce identical in-flight GETs;
+  //   2) retry transient same-origin GET failures twice;
+  //   3) never retry mutations, so POST/PATCH/DELETE cannot be duplicated;
+  //   4) preserve the failed endpoint in the thrown error for devlog diagnosis.
   if (!window.__ACTIVITY_FETCH_RETRY_INSTALLED__) {
     window.__ACTIVITY_FETCH_RETRY_INSTALLED__ = true;
     const nativeFetch = window.fetch.bind(window);
+    const inFlightGets = new Map();
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
     const requestMeta = (input, init = {}) => {
@@ -15,17 +19,24 @@
       try {
         url = new URL(rawUrl, location.href);
       } catch (_) {
-        return { retryable: false, label: String(rawUrl || 'unknown request') };
+        return { retryable: false, dedupe: false, label: String(rawUrl || 'unknown request'), key: '' };
       }
+
       const method = String(init.method || input?.method || 'GET').toUpperCase();
+      const sameOriginGet = method === 'GET' && url.origin === location.origin;
+      const hasCustomHeaders = Boolean(init.headers) || (typeof Request !== 'undefined' && input instanceof Request && [...input.headers.keys()].length > 0);
+      const credentials = init.credentials || input?.credentials || 'same-origin';
+      const cache = init.cache || input?.cache || 'default';
+
       return {
-        retryable: method === 'GET' && url.origin === location.origin,
+        retryable: sameOriginGet,
+        dedupe: sameOriginGet && !hasCustomHeaders,
         label: `${url.pathname}${url.search}`,
+        key: `${url.href}|credentials=${credentials}|cache=${cache}`,
       };
     };
 
-    window.fetch = async (input, init = {}) => {
-      const meta = requestMeta(input, init);
+    const fetchWithRetry = async (input, init, meta) => {
       const delays = meta.retryable ? [0, 250, 700] : [0];
       let lastError;
 
@@ -46,6 +57,23 @@
         throw wrapped;
       }
       throw lastError;
+    };
+
+    window.fetch = async (input, init = {}) => {
+      const meta = requestMeta(input, init);
+      if (!meta.dedupe) return fetchWithRetry(input, init, meta);
+
+      let pending = inFlightGets.get(meta.key);
+      if (!pending) {
+        pending = fetchWithRetry(input, init, meta);
+        inFlightGets.set(meta.key, pending);
+        pending.finally(() => {
+          if (inFlightGets.get(meta.key) === pending) inFlightGets.delete(meta.key);
+        }).catch(() => {});
+      }
+
+      const response = await pending;
+      return response.clone();
     };
   }
 
