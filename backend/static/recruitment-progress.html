@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/static/design.css?v=20260909-4">
   <link rel="stylesheet" href="/static/recruitment.css?v=20260911-3">
   <link rel="stylesheet" href="/static/recruitment-feishu.css?v=20260911-2">
+  <link rel="stylesheet" href="/static/recruitment-feishu-pipeline.css?v=20260911-1">
 </head>
 <body class="feishu-document-page">
   <main class="shell feishu-document-shell">
@@ -27,7 +28,7 @@
         <div>
           <p class="feishu-document-kicker">秋招 / 招聘进度</p>
           <h1>招聘进度总表</h1>
-          <p class="feishu-document-description">与飞书多维表格保持同一份数据。网页修改和邮件识别结果都会先进入审核区，确认后才写回飞书。</p>
+          <p class="feishu-document-description">直接读取同一张飞书多维表格。邮件识别结果先进入下方审核表，字段可补充、公司可重新匹配，批准后才真正写回飞书。</p>
         </div>
         <div class="recruitment-actions feishu-document-actions">
           <a id="feishuSourceLink" class="ghost-button" href="#" target="_blank" rel="noopener noreferrer" hidden>在飞书中打开</a>
@@ -57,7 +58,7 @@
       <div class="feishu-section-heading">
         <div>
           <h2 id="recordTitle">招聘总表</h2>
-          <p>直接查看飞书中的公司、阶段和后续节点。点击“修改”只会生成审核建议。</p>
+          <p>按“投递状态”分组展示飞书记录。网页直接修改仍会先生成审核建议。</p>
         </div>
       </div>
       <div id="feishuTableShell" class="feishu-table-shell">
@@ -69,11 +70,11 @@
       <div class="feishu-section-heading feishu-review-heading">
         <div>
           <h2 id="reviewTitle">待审核变更</h2>
-          <p>邮件识别和网页修改都先集中到这里，对比修改前后内容后再决定是否写回。</p>
+          <p>先确认公司、岗位、类型、地点、状态和阶段日期；匹配不到旧公司时可直接新建，匹配冲突时先选择目标。</p>
         </div>
         <button id="feishuBackfillButton" class="ghost-button" type="button">从邮件生成建议</button>
       </div>
-      <div id="feishuProposalList" class="feishu-proposal-list">
+      <div id="feishuProposalList" class="feishu-proposal-list feishu-proposal-table-shell">
         <div class="empty-recruitment">正在读取审核队列…</div>
       </div>
     </section>
@@ -92,20 +93,19 @@
       <div>
         <p class="eyebrow">REVIEW BEFORE WRITE</p>
         <h3 id="feishuEditTitle">修改招聘进度</h3>
-        <p class="dialog-help">保存后只会创建一条“待审核”建议，不会立即写入飞书。</p>
+        <p id="feishuEditHelp" class="dialog-help">保存后只会创建一条“待审核”建议，不会立即写入飞书。</p>
       </div>
       <input id="feishuEditRecordId" type="hidden">
       <div id="feishuEditFields" class="feishu-edit-fields"></div>
       <div class="correction-actions">
         <button id="feishuEditCancel" class="ghost-button" type="button">取消</button>
-        <button class="ghost-button correction-save" type="submit">生成审核建议</button>
+        <button id="feishuEditSubmit" class="ghost-button correction-save" type="submit">生成审核建议</button>
       </div>
     </form>
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="/static/ui.js?v=20260910-2" defer></script>
-  <script src="/static/recruitment-feishu.js?v=20260911-1" defer></script>
-  <script src="/static/recruitment-feishu-normalize.js?v=20260911-1" defer></script>
+  <script src="/static/recruitment-feishu.js?v=20260911-2" defer></script>
 </body>
 </html>
