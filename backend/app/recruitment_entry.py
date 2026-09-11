@@ -14,6 +14,7 @@ from .main import DEFAULT_DB, STATIC_DIR, create_app
 from .recruitment import build_recruitment_router, scan_qq_mail
 from .recruitment_calendar import build_recruitment_calendar_router
 from .recruitment_feishu import build_recruitment_feishu_router
+from .recruitment_feishu_cache import install_feishu_cache
 from .recruitment_feishu_queue import build_recruitment_feishu_queue_router
 
 
@@ -40,6 +41,9 @@ def require_recruitment_auth(
 
 
 db_path = Path(os.getenv("ACTIVITYWATCH_DB_PATH", str(DEFAULT_DB)))
+# 安装进程内短缓存后再构造飞书路由。这样 /records、/proposals 以及审核编辑
+# 在同一次交互中共享 tenant token / Wiki token / schema / records，避免重复访问飞书。
+install_feishu_cache()
 app.include_router(build_recruitment_router(db_path, require_recruitment_auth))
 app.include_router(build_recruitment_calendar_router(db_path, require_recruitment_auth))
 app.include_router(build_recruitment_feishu_router(db_path, require_recruitment_auth))
