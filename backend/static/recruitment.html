@@ -31,7 +31,7 @@
       <div>
         <p class="eyebrow">RECRUITMENT CONTROL CENTER</p>
         <h1>秋招事项</h1>
-        <p class="hero-meta">邮件识别负责收集，事项列表负责处理；日历视图负责排期、编辑与 Google Calendar 同步。</p>
+        <p class="hero-meta">邮件识别负责收集，事项列表负责处理；日历视图负责排期、编辑与 Google Calendar 双向同步。</p>
       </div>
       <div class="recruitment-actions">
         <button id="scanMailButton" class="ghost-button" type="button">立即检查 QQ 邮箱</button>
@@ -91,7 +91,8 @@
         </div>
         <div class="calendar-toolbar-right">
           <button id="calendarAddButton" class="ghost-button" type="button">＋ 新增日程</button>
-          <button id="calendarSyncAllButton" class="ghost-button" type="button" disabled>同步待办到 Google</button>
+          <button id="calendarPullGoogleButton" class="ghost-button" type="button" disabled title="从 Google Calendar 拉取当前月份日程到网页日历">从 Google 同步</button>
+          <button id="calendarSyncAllButton" class="ghost-button" type="button" disabled title="把网页中的待处理事项创建或更新到 Google Calendar">同步到 Google</button>
           <button id="googleCalendarButton" class="ghost-button" type="button">连接 Google 日历</button>
           <button id="googleCalendarDisconnect" class="ghost-button" type="button" hidden>断开 Google</button>
         </div>
@@ -242,6 +243,7 @@
   <script src="/static/ui.js?v=20260910-2" defer></script>
   <script src="/static/recruitment.js?v=20260911-4" defer></script>
   <script src="/static/recruitment-calendar.js?v=20260911-1" defer></script>
+  <script src="/static/recruitment-calendar-sync-controls.js?v=20260911-1" defer></script>
   <script src="/static/recruitment-search.js?v=20260911-1" defer></script>
 </body>
 </html>
