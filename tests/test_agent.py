@@ -581,7 +581,8 @@ def test_stale_memories_expire_and_correction_exempt(agent_client):
     assert all(item["status"] == "active" for item in memories["active"])
 
 
-def test_stale_sweep_wired_into_enrich(agent_client):
+def test_stale_sweep_wired_into_enrich(agent_client, monkeypatch):
+    monkeypatch.setattr("backend.app.agent.time.monotonic", lambda: 100.0)
     client, fake, database = agent_client
     database.add_memory({"kind": "app_fact", "scope": "gone.exe", "content": "过期事实"})
     stale_time = utc_iso(datetime.now(timezone.utc) - timedelta(days=240))

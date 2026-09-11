@@ -326,3 +326,10 @@
 - 解决：ui.js 新增 platformLabel、toast、rankingRows 共享实现；app.js/daily.js 删除重复函数体改为别名引用；排行行统一走 rankingRows（ActivityUI.escape 正则转义，覆盖引号）；顺带删除无引用的 PURPOSE_FALLBACK_COLORS、FALLBACK_COLORS、formatTrackedHours、shiftDay。
 - 版本：基于 a2a4789，前端 ui.js/app.js/daily.js v=20260910-2。
 - 验证：单元测试新增 rankingRows 转义用例（含引号注入），8/8 passed；Playwright 实测总览/日报/对比三页无控制台错误，2026-09-09 真实数据日排行渲染与旧实现一致（Code.exe 50% 条宽、title 属性、空态文案），无数据日回落“暂无应用数据”。
+
+### 2026-09-11T16:23:37+08:00 机器启动不足六小时时首次过期记忆清理被跳过
+- 现象：发布前回归 test_stale_sweep_wired_into_enrich 失败，首次增强后过期记忆仍为 active。
+- 根因：上次清理时间初始化为 0.0，与单调时钟相减后不足六小时，误触发节流判断。
+- 解决：用 None 表示尚未清理，首次调用直接清理；后续仍按六小时间隔执行。
+- 版本：基于 8c13e36，后端 0.4.2。
+- 验证：测试固定单调时钟为 100 秒覆盖刚启动场景；后端全量 89 passed，前端 9 passed。

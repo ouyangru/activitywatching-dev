@@ -316,7 +316,7 @@ class AgentService:
         self.rows_provider = None
         # 每个 (digest, day) 只累计一次命中，防止重复触发沉淀
         self._hit_bumped: set[tuple[str, str]] = set()
-        self._last_stale_sweep = 0.0
+        self._last_stale_sweep: float | None = None
 
     # ------------------------------------------------------------------
     # 异步触发（写路径只投递，不等待）
@@ -436,7 +436,7 @@ class AgentService:
     def _maybe_expire_stale(self) -> None:
         """节流的 stale 清扫；失败只记日志，绝不影响 enrich 主流程。"""
         now = time.monotonic()
-        if now - self._last_stale_sweep < STALE_SWEEP_INTERVAL_SECONDS:
+        if self._last_stale_sweep is not None and now - self._last_stale_sweep < STALE_SWEEP_INTERVAL_SECONDS:
             return
         self._last_stale_sweep = now
         try:
