@@ -61,6 +61,17 @@ def configure():
             "GOOGLE_CALENDAR_CLIENT_SECRET": "",
             "GOOGLE_CALENDAR_ID": "primary",
             "GOOGLE_CALENDAR_REDIRECT_URI": "",
+            "FEISHU_APP_ID": "",
+            "FEISHU_APP_SECRET": "",
+            "FEISHU_RECRUITMENT_APP_TOKEN": "",
+            "FEISHU_RECRUITMENT_WIKI_TOKEN": "",
+            "FEISHU_RECRUITMENT_TABLE_ID": "",
+            "FEISHU_RECRUITMENT_VIEW_ID": "",
+            "FEISHU_RECRUITMENT_SOURCE_URL": "",
+            "FEISHU_RECRUITMENT_COMPANY_FIELD": "公司",
+            "FEISHU_RECRUITMENT_STAGE_FIELD": "招聘进度",
+            "FEISHU_RECRUITMENT_LATEST_FIELD": "最新动态",
+            "FEISHU_RECRUITMENT_NEXT_FIELD": "下一节点",
         },
     )
     write("/etc/systemd/system/activity-timeline.service", """[Unit]
@@ -139,7 +150,7 @@ WantedBy=timers.target
     subprocess.run(["systemctl", "enable", "--now", "activity-timeline", "nginx"], check=True)
     subprocess.run(["systemctl", "reload", "nginx"], check=True)
     if tls:
-        subprocess.run(["systemctl", "enable", "--now", "activity-cert-renew.timer"], check=True)
+        subprocess.run(["systemctl", "enable", "--now", "activity-cert-renew.timer"])
 
 
 if __name__ == "__main__":
