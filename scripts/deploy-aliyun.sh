@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 一键部署：本地 main -> GitHub -> 阿里云服务器（47.82.104.59）
+# 一键发布：本地 main -> GitHub -> 阿里云服务器（47.82.104.59）
 #
 # 用法（在仓库根目录，Git Bash / Linux 均可）：
 #   bash scripts/deploy-aliyun.sh
