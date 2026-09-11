@@ -46,6 +46,26 @@
     window.setTimeout(() => toast.classList.remove('show'), 3000);
   }
 
+  function comparableValue(value) {
+    if (Array.isArray(value)) return JSON.stringify(value.map(String));
+    if (value === null || value === undefined) return '';
+    return JSON.stringify(value);
+  }
+
+  function normalizedControlValue(input) {
+    const type = Number(input.dataset.feishuType);
+    if (type === 7) return input.checked;
+    if (type === 2) return input.value.trim() === '' ? '' : Number(input.value);
+    if (type === 4) return input.value.split(',').map((part) => part.trim()).filter(Boolean);
+    if (type === 5) return input.value ? new Date(input.value).getTime() : '';
+    return input.value.trim();
+  }
+
+  function normalizeOriginal(input) {
+    if (!input || input.dataset.original === undefined) return;
+    input.dataset.original = comparableValue(normalizedControlValue(input));
+  }
+
   function nonEmptyFieldValue(input) {
     const type = Number(input.dataset.feishuType);
     if (type === 7) return input.checked ? true : undefined;
@@ -115,9 +135,15 @@
   }
 
   function enhanceSingleSelect(input, field) {
-    if (input.tagName === 'SELECT' || input.dataset.feishuEnhanced === '1') return;
+    if (input.tagName === 'SELECT' || input.dataset.feishuEnhanced === '1') {
+      normalizeOriginal(input);
+      return input;
+    }
     const choices = fieldOptionNames(field);
-    if (!choices.length) return;
+    if (!choices.length) {
+      normalizeOriginal(input);
+      return input;
+    }
 
     const current = input.value.trim();
     const select = document.createElement('select');
@@ -139,12 +165,20 @@
       select.appendChild(option);
     });
     input.replaceWith(select);
+    normalizeOriginal(select);
+    return select;
   }
 
   function enhanceMultiSelect(input, field) {
-    if (input.dataset.feishuEnhanced === '1') return;
+    if (input.dataset.feishuEnhanced === '1') {
+      normalizeOriginal(input);
+      return input;
+    }
     const choices = fieldOptionNames(field);
-    if (!choices.length) return;
+    if (!choices.length) {
+      normalizeOriginal(input);
+      return input;
+    }
 
     const current = new Set(input.value.split(',').map((part) => part.trim()).filter(Boolean));
     input.dataset.feishuEnhanced = '1';
@@ -172,6 +206,8 @@
     };
     wrap.addEventListener('change', syncValue);
     input.insertAdjacentElement('afterend', wrap);
+    normalizeOriginal(input);
+    return input;
   }
 
   function enhanceDialog() {
@@ -184,10 +220,20 @@
         return;
       }
       const field = fieldSchema.get(fieldName);
-      if (!field) return;
+      if (!field) {
+        normalizeOriginal(input);
+        return;
+      }
       const type = Number(field.type);
-      if (type === 3) enhanceSingleSelect(input, field);
-      if (type === 4) enhanceMultiSelect(input, field);
+      if (type === 3) {
+        enhanceSingleSelect(input, field);
+        return;
+      }
+      if (type === 4) {
+        enhanceMultiSelect(input, field);
+        return;
+      }
+      normalizeOriginal(input);
     });
   }
 
