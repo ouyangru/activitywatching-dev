@@ -160,9 +160,9 @@ function setLoading(visible, label = '正在加载工作区…') {
 function embeddedHtml(source, sourcePath) {
   const patch = `
     <style id="personal-hub-embed-style">
-      html, body { background: #07110f !important; }
+      html, body { background: #131a22 !important; }
       .topbar { display: none !important; }
-      .shell { width: min(1600px, calc(100% - 28px)) !important; padding-top: 12px !important; padding-bottom: 28px !important; }
+      .shell { width: min(1440px, calc(100% - 28px)) !important; padding-top: 12px !important; padding-bottom: 28px !important; }
       .ambient { display: none !important; }
       @media (max-width: 700px) { .shell { width: calc(100% - 16px) !important; } }
     </style>
@@ -236,7 +236,7 @@ async function loadInternalPage(path, section, force = false) {
   } catch (error) {
     if (token !== frameLoadToken) return;
     setLoading(false);
-    els.frame.srcdoc = `<!doctype html><meta charset="utf-8"><style>body{margin:0;background:#07110f;color:#effff5;font-family:system-ui;padding:36px}p{color:#92aaa0;line-height:1.7}button{padding:9px 12px;border:1px solid #27453a;background:#10221c;color:#effff5;border-radius:10px}</style><h2>工作区加载失败</h2><p>${String(error.message || error)}</p>`;
+    els.frame.srcdoc = `<!doctype html><meta charset="utf-8"><style>body{margin:0;background:#131a22;color:#e7eef5;font-family:'Segoe UI','Microsoft YaHei',system-ui,sans-serif;padding:36px}p{color:#a5b5c4;line-height:1.7}button{padding:9px 12px;border:1px solid #425465;background:#23313e;color:#c9dce9;border-radius:5px}</style><h2>工作区加载失败</h2><p>${String(error.message || error)}</p>`;
   }
 }
 
