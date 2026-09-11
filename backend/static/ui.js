@@ -1,5 +1,6 @@
 /* Shared dates, chart lifecycle and interval correction for all activity views. */
 window.ActivityUI = (() => {
+  if (window.parent !== window) window.__PERSONAL_HUB_EMBEDDED__ = true;
   const colors = { 学习:'#82cedd', 工作:'#92a3d9', 娱乐:'#d6ad79', 空闲:'#8d9ba9', 其他:'#b3a0ce', 无设备记录:'#45515e', 睡眠:'#858ac4', 运动:'#78b6a1', 出游:'#c6bc80', 用餐:'#c4937c', 通勤:'#779fb7', 休息:'#aa9eb6', 家务:'#99ad7b', 生活事务:'#99ad7b' };
   const editable = Object.keys(colors).filter(x => !['无设备记录','生活事务'].includes(x));
   const charts = new Map();
@@ -15,8 +16,10 @@ window.ActivityUI = (() => {
   const platformLabel = value => value === 'android' ? 'Android' : value === 'windows' ? 'Windows' : '无设备';
   const errorLike = value => /(failed|failure|invalid|error|异常|失败|不可用|无法)/i.test(String(value || ''));
   const safePath = value => {
-    try { return new URL(String(value || ''), document.baseURI).pathname; }
-    catch { return String(value || '').split('?',1)[0].slice(0,500); }
+    const raw=String(value || '').trim();
+    if(!raw)return '';
+    try { return new URL(raw, document.baseURI).pathname; }
+    catch { return raw.split('?',1)[0].slice(0,500); }
   };
   function reportError(error, action='client_error', details={}) {
     const message = error instanceof Error ? error.message : String(error || 'client error');
