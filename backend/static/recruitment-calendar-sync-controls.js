@@ -54,7 +54,8 @@
     };
 
     const renderObserver = new MutationObserver(() => {
-      const failed = grid.textContent.includes('加载日历失败');
+      const stateText = googleState?.textContent || '';
+      const failed = grid.textContent.includes('加载日历失败') || stateText.includes('读取失败');
       finish(!failed);
     });
     renderObserver.observe(grid, { childList: true, subtree: true });
