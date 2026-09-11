@@ -7,7 +7,7 @@ services:
     plan: 0.5c-512mb
     numInstances: 1
     buildCommand: pip install -r backend/requirements.txt
-    startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT --workers 1 --no-access-log
+    startCommand: uvicorn backend.app.recruitment_entry:app --host 0.0.0.0 --port $PORT --workers 1 --no-access-log
     healthCheckPath: /api/v1/health
     envVars:
       - key: PYTHON_VERSION
@@ -20,6 +20,10 @@ services:
         value: /var/data/activitywatch.db
       - key: ACTIVITYWATCH_TIMEZONE
         value: Asia/Shanghai
+      - key: RECRUITMENT_AUTO_SCAN
+        value: "1"
+      - key: RECRUITMENT_SCAN_INTERVAL_SECONDS
+        value: "600"
     disk:
       name: activity-data
       mountPath: /var/data
