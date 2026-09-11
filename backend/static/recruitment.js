@@ -13,6 +13,7 @@
   const summaryNext = document.getElementById('summaryNext');
   let filter = 'active';
   let allItems = [];
+  let mailConfig = null;
 
   const typeLabel = { written_test: '笔试', assessment: '测评', interview: '面试', other: '其他' };
   const modeLabel = { fixed_time: '固定时间', deadline: '截止事项', uncertain: '待确认' };
@@ -37,7 +38,7 @@
   function formatDate(raw) {
     if (!raw) return '时间待确认';
     if (!raw.includes('T')) {
-      const [y, m, d] = raw.split('-');
+      const [, m, d] = raw.split('-');
       return `${Number(m)}月${Number(d)}日`;
     }
     const date = new Date(raw);
@@ -63,7 +64,13 @@
   function renderItems() {
     const items = filteredItems();
     if (!items.length) {
-      listEl.innerHTML = '<div class="empty-recruitment">当前筛选条件下没有事项。</div>';
+      if (mailConfig && !mailConfig.mail_configured) {
+        listEl.innerHTML = '<div class="empty-recruitment">QQ 邮箱尚未完成配置，因此还没有可同步的秋招事项。请先在服务器环境中配置 QQ_EMAIL 与 QQ_EMAIL_AUTH_CODE。</div>';
+      } else if (!allItems.length) {
+        listEl.innerHTML = '<div class="empty-recruitment">邮箱已连接，但当前还没有识别到秋招事项。可以点击“立即检查 QQ 邮箱”主动扫描最近邮件。</div>';
+      } else {
+        listEl.innerHTML = '<div class="empty-recruitment">当前筛选条件下没有事项。</div>';
+      }
       return;
     }
     listEl.innerHTML = items.map((item) => {
@@ -108,7 +115,11 @@
 
   function renderLogs(logs) {
     if (!logs.length) {
-      logEl.innerHTML = '<div class="empty-recruitment">还没有邮件处理记录。</div>';
+      if (mailConfig && !mailConfig.mail_configured) {
+        logEl.innerHTML = '<div class="empty-recruitment">邮箱未配置，暂时不会产生邮件处理记录。</div>';
+      } else {
+        logEl.innerHTML = '<div class="empty-recruitment">还没有邮件处理记录。</div>';
+      }
       return;
     }
     logEl.innerHTML = logs.map((log) => `
@@ -128,8 +139,21 @@
       : '暂无';
   }
 
+  function configMessage(config, count) {
+    if (!config.mail_configured) {
+      const missing = [];
+      if (!config.email_configured) missing.push('QQ_EMAIL');
+      if (!config.auth_code_configured) missing.push('QQ_EMAIL_AUTH_CODE');
+      return `QQ 邮箱未配置：缺少 ${missing.join(' / ')}。当前页面只能显示已有数据库事项，不会自动拉取新邮件。`;
+    }
+    const intervalMinutes = Math.max(1, Math.round(Number(config.scan_interval_seconds || 600) / 60));
+    const account = config.account_hint ? ` ${config.account_hint}` : '';
+    const scanState = config.auto_scan_enabled ? `自动扫描每 ${intervalMinutes} 分钟一次` : '自动扫描已关闭';
+    return `QQ 邮箱已连接${account}，${scanState}；当前共 ${count} 条秋招事项。`;
+  }
+
   async function api(path, options = {}) {
-    const response = await fetch(path, { credentials: 'same-origin', ...options });
+    const response = await fetch(path, { credentials: 'same-origin', cache: 'no-store', ...options });
     if (!response.ok) {
       let detail = `HTTP ${response.status}`;
       try {
@@ -144,16 +168,18 @@
   async function loadAll() {
     stateEl.textContent = '正在加载秋招事项…';
     try {
-      const [itemsPayload, summaryPayload, logsPayload] = await Promise.all([
+      const [itemsPayload, summaryPayload, logsPayload, configPayload] = await Promise.all([
         api('/api/v1/recruitment/items'),
         api('/api/v1/recruitment/summary'),
         api('/api/v1/recruitment/mail-log?limit=80'),
+        api('/api/v1/recruitment/config-status'),
       ]);
       allItems = itemsPayload.items || [];
+      mailConfig = configPayload;
       fillSummary(summaryPayload);
       renderItems();
       renderLogs(logsPayload.logs || []);
-      stateEl.textContent = `已加载 ${allItems.length} 条秋招事项。`;
+      stateEl.textContent = configMessage(configPayload, allItems.length);
     } catch (error) {
       stateEl.textContent = `加载失败：${error.message}`;
     }
@@ -164,6 +190,9 @@
     scanButton.textContent = '正在检查…';
     stateEl.textContent = '正在连接 QQ 邮箱并检查最近邮件…';
     try {
+      if (mailConfig && !mailConfig.mail_configured) {
+        throw new Error('QQ 邮箱尚未配置，请先在服务器环境变量中设置 QQ_EMAIL 与 QQ_EMAIL_AUTH_CODE');
+      }
       const result = await api('/api/v1/recruitment/scan', { method: 'POST' });
       showToast(`新增 ${result.imported} 条，待确认 ${result.uncertain} 条`);
       await loadAll();
