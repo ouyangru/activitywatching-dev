@@ -216,7 +216,8 @@
         return;
       }
       header.classList.add(COLUMN_CLASS[fullName] || (fullName === '操作' ? 'feishu-action-cell' : 'col-default'));
-      if (SHORT_HEADERS[fullName]) header.textContent = SHORT_HEADERS[fullName];
+      const shortName = SHORT_HEADERS[fullName];
+      if (shortName && header.textContent.trim() !== shortName) header.textContent = shortName;
     });
 
     table.querySelectorAll('tbody tr').forEach((row) => {
@@ -234,7 +235,8 @@
         cell.classList.add(COLUMN_CLASS[fullName] || (fullName === '操作' ? 'feishu-action-cell' : 'col-default'));
         if (COLUMN_CLASS[fullName] === 'col-date') {
           const original = cell.getAttribute('title') || cell.textContent;
-          cell.textContent = compactDate(original);
+          const compact = compactDate(original);
+          if (cell.textContent.trim() !== compact) cell.textContent = compact;
           cell.setAttribute('title', original);
         }
       });
@@ -299,14 +301,16 @@
     }
   }, true);
 
+  // Observe only direct replacements from the main renderer. The enhancement itself changes
+  // descendants, so avoiding subtree observation prevents recursive re-processing.
   const tableObserver = new MutationObserver(() => compactMainTable());
-  if (tableShell) tableObserver.observe(tableShell, { childList: true, subtree: true });
+  if (tableShell) tableObserver.observe(tableShell, { childList: true });
 
   const dialogObserver = new MutationObserver(() => enhanceDialog());
-  if (editFields) dialogObserver.observe(editFields, { childList: true, subtree: true });
+  if (editFields) dialogObserver.observe(editFields, { childList: true });
 
   const mappingObserver = new MutationObserver(() => hideMappingEntries());
-  if (mappingEl) mappingObserver.observe(mappingEl, { childList: true, subtree: true });
+  if (mappingEl) mappingObserver.observe(mappingEl, { childList: true });
 
   loadFieldSchema();
 })();
