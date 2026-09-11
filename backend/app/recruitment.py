@@ -16,6 +16,8 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from .recruitment_pipeline import ensure_recruitment_metadata_columns, extract_pipeline_metadata
+
 
 RECRUITMENT_KEYWORDS = (
     "笔试", "测评", "面试", "校招", "秋招", "招聘", "在线考试", "在线测评",
@@ -51,6 +53,10 @@ class RecruitmentPatch(BaseModel):
     deadline_at: str | None = None
     deadline_precision: str | None = Field(default=None, max_length=32)
     action_url: str | None = Field(default=None, max_length=2048)
+    position: str | None = Field(default=None, max_length=128)
+    recruitment_type: str | None = Field(default=None, max_length=64)
+    location: str | None = Field(default=None, max_length=128)
+    priority: str | None = Field(default=None, max_length=64)
 
 
 def _connect(path: Path) -> sqlite3.Connection:
@@ -101,6 +107,8 @@ def init_recruitment_db(path: Path) -> None:
             ON recruitment_mail_log(message_id);
             """
         )
+        ensure_recruitment_metadata_columns(connection)
+        connection.commit()
 
 
 def _now_iso() -> str:
@@ -240,6 +248,7 @@ def extract_recruitment_item(subject: str, sender: str, body: str, received_at: 
     local_tz = ZoneInfo(os.getenv("ACTIVITYWATCH_TIMEZONE", "Asia/Shanghai"))
     base = received_at.astimezone(local_tz)
     item_type = _classify(subject, body)
+    metadata = extract_pipeline_metadata(subject, body)
     deadline, deadline_precision, deadline_context = _find_context_date(body, DEADLINE_HINTS, base)
     fixed_time, fixed_precision, fixed_context = _find_context_date(body, FIXED_TIME_HINTS, base)
     relative_deadline, relative_note = _relative_deadline(body, base)
@@ -281,6 +290,7 @@ def extract_recruitment_item(subject: str, sender: str, body: str, received_at: 
         "deadline_precision": deadline_precision,
         "action_url": _best_action_url(body),
         "extraction_note": note,
+        **metadata,
     }
 
 
@@ -320,6 +330,7 @@ def scan_qq_mail(db_path: Path, limit: int | None = None) -> dict[str, Any]:
         uids.reverse()
 
         with _connect(db_path) as connection:
+            ensure_recruitment_metadata_columns(connection)
             for raw_uid in uids:
                 uid = raw_uid.decode("ascii", errors="ignore")
                 known_uid = connection.execute(
@@ -365,13 +376,15 @@ def scan_qq_mail(db_path: Path, limit: int | None = None) -> dict[str, Any]:
                     INSERT INTO recruitment_items(
                         message_id, imap_uid, company, title, item_type, mode, status,
                         start_at, end_at, deadline_at, deadline_precision, action_url,
+                        position, recruitment_type, location, priority,
                         source_subject, source_sender, source_received_at, extraction_note,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         message_id, uid, item["company"], item["title"], item["item_type"], item["mode"], item["status"],
                         item["start_at"], item["end_at"], item["deadline_at"], item["deadline_precision"], item["action_url"],
+                        item.get("position"), item.get("recruitment_type"), item.get("location"), item.get("priority"),
                         subject, sender, received_at.isoformat(), item["extraction_note"], now, now,
                     ),
                 )
