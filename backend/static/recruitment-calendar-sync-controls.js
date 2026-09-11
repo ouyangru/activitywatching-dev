@@ -1,4 +1,14 @@
 (() => {
+  const viewTabs = document.querySelector('.recruitment-view-tabs');
+  if (viewTabs && !viewTabs.querySelector('[data-recruitment-progress-link]')) {
+    const progressLink = document.createElement('a');
+    progressLink.className = 'ghost-button';
+    progressLink.href = '/recruitment/progress';
+    progressLink.dataset.recruitmentProgressLink = 'true';
+    progressLink.textContent = '招聘进度';
+    viewTabs.appendChild(progressLink);
+  }
+
   const pullButton = document.getElementById('calendarPullGoogleButton');
   const googleDot = document.getElementById('googleCalendarDot');
   const googleState = document.getElementById('googleCalendarState');
