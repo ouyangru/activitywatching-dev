@@ -263,13 +263,8 @@
         await updateStatus(item, 'done');
         showToast('已标记完成');
       } else if (button.dataset.action === 'cancel') {
-        const name = item.company || item.title || '该事项';
-        if (!window.confirm(`确认取消「${name}」？取消后不会再计入截止提醒，可随时从“已取消”中恢复。`)) {
-          button.disabled = false;
-          return;
-        }
         await updateStatus(item, 'cancelled');
-        showToast('事项已取消');
+        showToast('事项已取消，可在“已取消”中恢复');
       } else if (button.dataset.action === 'restore') {
         await updateStatus(item, item.mode === 'uncertain' ? 'uncertain' : 'pending');
         showToast('已恢复为待办');
