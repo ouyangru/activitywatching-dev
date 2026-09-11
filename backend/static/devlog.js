@@ -102,7 +102,7 @@ window.DevLog = (() => {
 
     async function fetchEntries() {
       if (enabled === false) return;
-      const url = `/api/v1/debug/logs?after_id=${latestId}&limit=200` + (kind ? `&kind=${encodeURIComponent(kind)}` : '');
+      const url = `/api/v1/debug/logs?after_id=${latestId}&limit=200`;
       const data = await (window.ActivityUI ? ActivityUI.json(url) : fetch(url).then(r => r.json()));
       if (!data.enabled) {
         enabled = false;
@@ -124,7 +124,8 @@ window.DevLog = (() => {
 
     function visibleEntries() {
       return entries.filter(entry =>
-        (!module || entry.module === module)
+        (!kind || entry.kind === kind)
+        && (!module || entry.module === module)
         && (!onlyAbnormal || isAbnormal(entry))
         && (!onlySlow || isSlow(entry))
         && matchesSearch(entry, query)
@@ -134,7 +135,7 @@ window.DevLog = (() => {
     function stateLine() {
       const errors = entries.filter(e => e.level === 'error').length;
       const warnings = entries.filter(e => e.level === 'warn').length;
-      state.innerHTML = `共 ${entries.length} 条 · <b class="devlog-count-error">异常 ${errors}</b> · <b class="devlog-count-warn">警告 ${warnings}</b>${module ? ` · 模块 ${escape(MODULE_LABELS[module] || module)}` : ''}${query || onlyAbnormal || onlySlow ? ` · 当前显示 ${visibleEntries().length} 条` : ''}（id 至 ${latestId}）`;
+      state.innerHTML = `共 ${entries.length} 条 · <b class="devlog-count-error">异常 ${errors}</b> · <b class="devlog-count-warn">警告 ${warnings}</b>${module ? ` · 模块 ${escape(MODULE_LABELS[module] || module)}` : ''}${kind || query || onlyAbnormal || onlySlow ? ` · 当前显示 ${visibleEntries().length} 条` : ''}（id 至 ${latestId}）`;
     }
 
     function render() {
@@ -167,7 +168,8 @@ window.DevLog = (() => {
     $('devKindBar').querySelectorAll('button').forEach(button => {
       button.onclick = () => {
         $('devKindBar').querySelectorAll('button').forEach(b => b.classList.toggle('is-active', b === button));
-        kind = button.dataset.kind; entries = []; open = new Set(); latestId = 0; render(); refresh();
+        kind = button.dataset.kind;
+        render();
       };
     });
     $('devModuleBar').querySelectorAll('button').forEach(button => {
