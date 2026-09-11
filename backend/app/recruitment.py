@@ -37,6 +37,7 @@ RELATIVE_HOUR_RE = re.compile(r"(?P<n>\d{1,3})\s*(?:个)?小时内")
 URL_RE = re.compile(r"https?://[^\s<>\"']+")
 HREF_RE = re.compile(r"href\s*=\s*[\"'](?P<url>https?://[^\"']+)[\"']", re.I)
 TAG_RE = re.compile(r"<[^>]+>")
+SUMMARY_ITEM_TYPES = {"written_test", "assessment", "interview"}
 
 
 class RecruitmentPatch(BaseModel):
@@ -392,6 +393,56 @@ def _serialize(row: sqlite3.Row) -> dict[str, Any]:
     return dict(row)
 
 
+def _summary_event_day(item: dict[str, Any], tz: ZoneInfo):
+    mode = item.get("mode")
+    raw = item.get("deadline_at") if mode == "deadline" else item.get("start_at") if mode == "fixed_time" else None
+    if not raw:
+        return None
+    try:
+        if "T" not in raw:
+            return datetime.fromisoformat(raw).date()
+        value = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=tz)
+        else:
+            value = value.astimezone(tz)
+        return value.date()
+    except ValueError:
+        return None
+
+
+def _summarize_recruitment_items(items: list[dict[str, Any]], today, tz: ZoneInfo) -> dict[str, Any]:
+    future_start = today + timedelta(days=1)
+    future_end = today + timedelta(days=3)
+    today_count = 0
+    three_day_count = 0
+    uncertain_count = 0
+    next_item = None
+
+    for item in items:
+        if item.get("status") == "uncertain":
+            uncertain_count += 1
+        if next_item is None and item.get("status") == "pending":
+            next_item = item
+
+        if item.get("status") != "pending" or item.get("item_type") not in SUMMARY_ITEM_TYPES:
+            continue
+        day = _summary_event_day(item, tz)
+        if day is None:
+            continue
+        if day == today:
+            today_count += 1
+        elif future_start <= day <= future_end:
+            three_day_count += 1
+
+    return {
+        "today": today_count,
+        "three_days": three_day_count,
+        "uncertain": uncertain_count,
+        "next_item": next_item,
+    }
+
+
 def build_recruitment_router(db_path: Path, require_auth: Any) -> APIRouter:
     init_recruitment_db(db_path)
     router = APIRouter(prefix="/api/v1/recruitment", dependencies=[Depends(require_auth)])
@@ -414,32 +465,11 @@ def build_recruitment_router(db_path: Path, require_auth: Any) -> APIRouter:
     def summary() -> dict[str, Any]:
         tz = ZoneInfo(os.getenv("ACTIVITYWATCH_TIMEZONE", "Asia/Shanghai"))
         today = datetime.now(tz).date()
-        three_days = today + timedelta(days=3)
         with _connect(db_path) as connection:
             rows = connection.execute(
                 "SELECT * FROM recruitment_items WHERE status IN ('pending','uncertain') ORDER BY COALESCE(deadline_at,start_at,'9999') ASC"
             ).fetchall()
-        today_count = 0
-        three_day_count = 0
-        uncertain_count = 0
-        next_item = None
-        for row in rows:
-            item = dict(row)
-            if item["status"] == "uncertain":
-                uncertain_count += 1
-            raw = item.get("deadline_at") or item.get("start_at")
-            if raw:
-                try:
-                    day = datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(tz).date() if "T" in raw else datetime.fromisoformat(raw).date()
-                    if day == today:
-                        today_count += 1
-                    if today <= day <= three_days:
-                        three_day_count += 1
-                except ValueError:
-                    pass
-            if next_item is None and item["status"] == "pending":
-                next_item = item
-        return {"today": today_count, "three_days": three_day_count, "uncertain": uncertain_count, "next_item": next_item}
+        return _summarize_recruitment_items([dict(row) for row in rows], today, tz)
 
     @router.get("/mail-log")
     def mail_log(limit: int = 100) -> dict[str, Any]:
