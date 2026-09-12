@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0c1118">
+  <title>ACM Practice · C++11</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">LOCAL ACM PRACTICE</p>
+        <h1>算法训练台</h1>
+      </div>
+      <div class="topbar-actions">
+        <span id="compilerStatus" class="status-pill">检测 g++…</span>
+        <span class="status-pill">C++11</span>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section class="problem-pane">
+        <div class="pane-toolbar">
+          <label for="problemSelect">题目</label>
+          <select id="problemSelect"></select>
+          <span id="difficultyBadge" class="difficulty"></span>
+        </div>
+
+        <article class="problem-card">
+          <h2 id="problemTitle">加载题目…</h2>
+          <div class="meta-row">
+            <span id="timeLimit">—</span>
+            <span id="memoryLimit">—</span>
+          </div>
+
+          <h3>题目描述</h3>
+          <p id="problemDescription"></p>
+
+          <h3>输入格式</h3>
+          <p id="inputFormat"></p>
+
+          <h3>输出格式</h3>
+          <p id="outputFormat"></p>
+
+          <h3>数据范围</h3>
+          <ul id="constraints"></ul>
+
+          <h3>样例</h3>
+          <div id="samples"></div>
+        </article>
+      </section>
+
+      <section class="code-pane">
+        <div class="pane-toolbar code-toolbar">
+          <div>
+            <strong>main.cpp</strong>
+            <span class="muted">g++ -std=c++11 -O2</span>
+          </div>
+          <div class="toolbar-actions">
+            <button id="resetCode" class="ghost-button" type="button">恢复模板</button>
+            <button id="runSample" class="secondary-button" type="button">运行样例</button>
+            <button id="submitCode" class="primary-button" type="button">提交判题</button>
+          </div>
+        </div>
+
+        <div class="editor-wrap">
+          <pre id="lineNumbers" class="line-numbers" aria-hidden="true">1</pre>
+          <textarea id="codeEditor" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="C++11 代码编辑器"></textarea>
+        </div>
+
+        <div class="lower-grid">
+          <section class="io-panel">
+            <div class="panel-title-row">
+              <h3>自定义输入</h3>
+              <button id="runCustom" class="ghost-button" type="button">运行自测</button>
+            </div>
+            <textarea id="customInput" class="io-textarea" spellcheck="false" placeholder="在这里输入 stdin…"></textarea>
+          </section>
+
+          <section class="result-panel">
+            <div class="panel-title-row">
+              <h3>判题结果</h3>
+              <span id="verdictBadge" class="verdict neutral">READY</span>
+            </div>
+            <div id="resultSummary" class="result-summary">Ctrl + Enter 运行样例，Ctrl + Shift + Enter 提交。</div>
+            <div class="result-columns">
+              <div>
+                <span class="result-label">stdout</span>
+                <pre id="stdoutBox" class="console-box">—</pre>
+              </div>
+              <div>
+                <span class="result-label">stderr / 编译信息</span>
+                <pre id="stderrBox" class="console-box">—</pre>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>
