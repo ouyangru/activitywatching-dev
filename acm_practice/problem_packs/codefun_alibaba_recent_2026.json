@@ -84,7 +84,7 @@
           "output": "0\n3\n5\n7\n"
         }
       ],
-      "reference_solution": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    int tests;\n    cin >> tests;\n    while (tests--) {\n        long long first, difference, modulus;\n        cin >> first >> difference >> modulus;\n        long long g = std::gcd(difference, modulus);\n        cout << modulus - g + (first % g) << '\\n';\n    }\n    return 0;\n}\n"
+      "reference_solution": "#include <bits/stdc++.h>\nusing namespace std;\n\nlong long gcdValue(long long a, long long b) {\n    while (b != 0) {\n        long long remainder = a % b;\n        a = b;\n        b = remainder;\n    }\n    return a;\n}\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    int tests;\n    cin >> tests;\n    while (tests--) {\n        long long first, difference, modulus;\n        cin >> first >> difference >> modulus;\n        long long g = gcdValue(difference, modulus);\n        cout << modulus - g + (first % g) << '\\n';\n    }\n    return 0;\n}\n"
     },
     {
       "source": "Alibaba",
