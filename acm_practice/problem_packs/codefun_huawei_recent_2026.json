@@ -103,7 +103,7 @@
         },
         {
           "input": "6\n5 1 2 7 3 4\n3\n",
-          "output": "9\n"
+          "output": "8\n"
         }
       ],
       "reference_solution": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    int n;\n    cin >> n;\n    vector<long long> work(n);\n    long long low = 0, high = 0;\n    for (long long& value : work) {\n        cin >> value;\n        low = max(low, value);\n        high += value;\n    }\n    int k;\n    cin >> k;\n\n    auto needed = [&](long long limit) {\n        int parts = 1;\n        long long current = 0;\n        for (long long value : work) {\n            if (current + value > limit) {\n                ++parts;\n                current = 0;\n            }\n            current += value;\n        }\n        return parts;\n    };\n\n    while (low < high) {\n        long long mid = low + (high - low) / 2;\n        if (needed(mid) <= k) high = mid;\n        else low = mid + 1;\n    }\n    cout << low << '\\n';\n    return 0;\n}\n"
