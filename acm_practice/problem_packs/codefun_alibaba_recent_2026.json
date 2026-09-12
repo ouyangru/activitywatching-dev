@@ -124,7 +124,7 @@
         },
         {
           "input": "1\n6\n())(()\n",
-          "output": "2\n3 6\n"
+          "output": "2\n3 4\n"
         }
       ],
       "reference_solution": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    int tests;\n    cin >> tests;\n    while (tests--) {\n        int n;\n        string s;\n        cin >> n >> s;\n        vector<int> unmatchedOpen;\n        vector<int> unmatchedClose;\n        for (int i = 0; i < n; ++i) {\n            if (s[i] == '(') {\n                unmatchedOpen.push_back(i + 1);\n            } else if (!unmatchedOpen.empty()) {\n                unmatchedOpen.pop_back();\n            } else {\n                unmatchedClose.push_back(i + 1);\n            }\n        }\n\n        vector<int> answer;\n        int closeFlips = (static_cast<int>(unmatchedClose.size()) + 1) / 2;\n        for (int i = 0; i < closeFlips; ++i) answer.push_back(unmatchedClose[i]);\n        int openFlips = (static_cast<int>(unmatchedOpen.size()) + 1) / 2;\n        for (int i = static_cast<int>(unmatchedOpen.size()) - openFlips;\n             i < static_cast<int>(unmatchedOpen.size()); ++i) {\n            answer.push_back(unmatchedOpen[i]);\n        }\n        sort(answer.begin(), answer.end());\n        cout << answer.size() << '\\n';\n        for (int i = 0; i < static_cast<int>(answer.size()); ++i) {\n            if (i) cout << ' ';\n            cout << answer[i];\n        }\n        cout << '\\n';\n    }\n    return 0;\n}\n"
