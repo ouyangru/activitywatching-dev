@@ -1,10 +1,14 @@
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 
 Set-Location $PSScriptRoot
 
 Write-Host "Starting ACM Practice Judge..."
 Write-Host "Directory: $(Get-Location)"
+Write-Host "Python:"
+python --version
+Write-Host "Launching server..."
 
-python3 .\server.py --host 127.0.0.1 --port 8765
+python -u .\server.py --host 127.0.0.1 --port 8765
 
+Write-Host "Server process exited. Check the error above."
 Read-Host "Press Enter to close"
