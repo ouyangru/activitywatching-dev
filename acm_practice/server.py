@@ -80,6 +80,10 @@ def _public_problem(problem: dict[str, Any]) -> dict[str, Any]:
         "source_problem_id": problem.get("source_problem_id"),
         "source_url": problem.get("source_url"),
         "adapted": bool(problem.get("adapted", False)),
+        "solution_outline": problem.get("solution_outline", []),
+        "correctness": problem.get("correctness", ""),
+        "complexity": problem.get("complexity", {}),
+        "pitfalls": problem.get("pitfalls", []),
     }
 
 
@@ -451,3 +455,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

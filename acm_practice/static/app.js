@@ -70,6 +70,12 @@ function renderProblem(problem) {
   $("difficultyBadge").textContent = problem.difficulty;
   $("timeLimit").textContent = `时间限制 ${problem.time_limit_ms} ms`;
   $("memoryLimit").textContent = `内存限制 ${problem.memory_limit_mb} MB`;
+  const sourceLink = $("sourceLink");
+  sourceLink.hidden = !problem.source_url;
+  sourceLink.href = problem.source_url || "#";
+  sourceLink.textContent = problem.source_date
+    ? `整理来源 · ${problem.source} ${problem.source_date}`
+    : `整理来源 · ${problem.source}`;
   $("problemDescription").textContent = problem.description;
   $("inputFormat").textContent = problem.input_format;
   $("outputFormat").textContent = problem.output_format;
@@ -81,8 +87,21 @@ function renderProblem(problem) {
         <div><span>输入</span><pre>${escapeHtml(sample.input)}</pre></div>
         <div><span>输出</span><pre>${escapeHtml(sample.output)}</pre></div>
       </div>
+      ${sample.explanation ? `<p class="sample-explanation"><strong>解释：</strong>${escapeHtml(sample.explanation)}</p>` : ""}
     </div>
   `).join("");
+  const solutionOutline = Array.isArray(problem.solution_outline) ? problem.solution_outline : [];
+  const pitfalls = Array.isArray(problem.pitfalls) ? problem.pitfalls : [];
+  const complexity = problem.complexity || {};
+  $("solutionOutline").innerHTML = solutionOutline.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+  $("correctness").textContent = problem.correctness || "暂无补充。";
+  $("complexity").innerHTML = [
+    complexity.time ? `<li><strong>时间：</strong>${escapeHtml(complexity.time)}</li>` : "",
+    complexity.space ? `<li><strong>空间：</strong>${escapeHtml(complexity.space)}</li>` : "",
+  ].join("");
+  $("pitfalls").innerHTML = pitfalls.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+  $("analysisDetails").hidden = !(solutionOutline.length || problem.correctness || complexity.time || complexity.space || pitfalls.length);
+  $("analysisDetails").open = false;
   $("customInput").value = problem.samples[0]?.input || "";
   loadSource(problem);
   setVerdict("READY", "写完代码后先运行样例，再提交隐藏测试。");
@@ -254,3 +273,4 @@ $("runCustom").addEventListener("click", () => runInput($("customInput").value))
 $("submitCode").addEventListener("click", submit);
 
 init();
+
