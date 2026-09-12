@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 ROOT = Path(__file__).resolve().parent
 STATIC_DIR = ROOT / "static"
 PROBLEMS_FILE = ROOT / "problems.json"
+PROBLEM_PACKS_DIR = ROOT / "problem_packs"
 MAX_SOURCE_BYTES = 64 * 1024
 MAX_STDIN_BYTES = 256 * 1024
 MAX_OUTPUT_BYTES = 128 * 1024
@@ -23,24 +24,58 @@ COMPILE_TIMEOUT_SECONDS = 10
 RUN_TIMEOUT_SECONDS = 2
 
 
+def _problem_files() -> list[Path]:
+    files = [PROBLEMS_FILE]
+    if PROBLEM_PACKS_DIR.is_dir():
+        files.extend(sorted(PROBLEM_PACKS_DIR.glob("*.json")))
+    return files
+
+
 def _read_problems() -> dict[str, dict[str, Any]]:
-    data = json.loads(PROBLEMS_FILE.read_text(encoding="utf-8"))
-    return {item["id"]: item for item in data["problems"]}
+    problems: dict[str, dict[str, Any]] = {}
+    for path in _problem_files():
+        data = json.loads(path.read_text(encoding="utf-8"))
+        items = data.get("problems", [])
+        if not isinstance(items, list):
+            raise ValueError(f"{path.name}: 'problems' must be a list")
+
+        default_source = data.get("source") or data.get("pack")
+        if not default_source:
+            default_source = "基础" if path == PROBLEMS_FILE else path.stem
+        default_category = data.get("category")
+        if not default_category:
+            default_category = "basic" if path == PROBLEMS_FILE else path.stem
+
+        for raw_problem in items:
+            if not isinstance(raw_problem, dict) or not raw_problem.get("id"):
+                raise ValueError(f"{path.name}: every problem must be an object with an id")
+            problem = dict(raw_problem)
+            problem.setdefault("source", default_source)
+            problem.setdefault("category", default_category)
+            problem_id = str(problem["id"])
+            if problem_id in problems:
+                problems[problem_id].update(problem)
+            else:
+                problems[problem_id] = problem
+    return problems
 
 
 def _public_problem(problem: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": problem["id"],
-        "title": problem["title"],
+        "title": problem.get("title", problem["id"]),
+        "source": problem.get("source", "unknown"),
+        "category": problem.get("category", "uncategorized"),
         "difficulty": problem.get("difficulty", "Easy"),
         "time_limit_ms": problem.get("time_limit_ms", 2000),
         "memory_limit_mb": problem.get("memory_limit_mb", 256),
-        "description": problem["description"],
-        "input_format": problem["input_format"],
-        "output_format": problem["output_format"],
+        "description": problem.get("description", ""),
+        "input_format": problem.get("input_format", ""),
+        "output_format": problem.get("output_format", ""),
         "constraints": problem.get("constraints", []),
         "samples": problem.get("samples", []),
         "starter_code": problem.get("starter_code", ""),
+        "tags": problem.get("tags", []),
     }
 
 
