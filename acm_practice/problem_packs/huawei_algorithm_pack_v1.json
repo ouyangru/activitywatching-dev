@@ -1,0 +1,41 @@
+{
+  "pack": "Huawei Algorithm Training v1",
+  "category": "big_company",
+  "problems": [
+    {
+      "id": "huawei-lru-cache",
+      "title": "LRU缓存实现",
+      "tags": ["哈希", "双向链表", "系统设计"],
+      "level": 2,
+      "target": "能够独立实现并处理容量、更新顺序、删除边界"
+    },
+    {
+      "id": "huawei-top-k",
+      "title": "出现频率最高的K个数字",
+      "tags": ["哈希", "堆", "排序"],
+      "level": 2,
+      "target": "掌握TopK的多种实现方式"
+    },
+    {
+      "id": "huawei-ip-prefix",
+      "title": "最长前缀匹配路由表",
+      "tags": ["Trie", "网络", "位运算"],
+      "level": 1,
+      "target": "理解网络设备路由查找"
+    },
+    {
+      "id": "huawei-task-scheduler",
+      "title": "任务调度模拟器",
+      "tags": ["优先队列", "模拟", "状态机"],
+      "level": 2,
+      "target": "提升复杂规则模拟能力"
+    },
+    {
+      "id": "huawei-expression-parser",
+      "title": "表达式求值",
+      "tags": ["栈", "字符串", "递归"],
+      "level": 2,
+      "target": "解决华为常见字符串模拟题"
+    }
+  ]
+}
