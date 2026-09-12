@@ -1,0 +1,46 @@
+{
+  "pack": "Huawei_and_big_company_training",
+  "problems": [
+    {
+      "id": "huawei-lru-cache",
+      "title": "华为风格-LRU缓存实现",
+      "difficulty": "Medium",
+      "tags": ["哈希", "链表", "工程模拟"],
+      "description": "设计一个固定容量缓存，支持put和get操作。超过容量时淘汰最近最少使用的数据。",
+      "target": "cache_design",
+      "status": "unlearned"
+    },
+    {
+      "id": "huawei-top-k-frequency",
+      "title": "华为风格-出现频率最高K个数",
+      "difficulty": "Medium",
+      "tags": ["哈希", "堆"],
+      "description": "给定大量日志编号，统计出现次数最多的K个编号。",
+      "target": "heap_hash"
+    },
+    {
+      "id": "huawei-ip-prefix",
+      "title": "华为风格-最长前缀匹配",
+      "difficulty": "Medium/Hard",
+      "tags": ["Trie", "网络"],
+      "description": "实现路由表中的最长IP前缀匹配。",
+      "target": "trie_network"
+    },
+    {
+      "id": "huawei-task-scheduler",
+      "title": "华为风格-任务调度模拟",
+      "difficulty": "Hard",
+      "tags": ["优先队列", "模拟"],
+      "description": "模拟多优先级任务队列调度，输出任务完成顺序。",
+      "target": "simulation"
+    },
+    {
+      "id": "huawei-expression-evaluate",
+      "title": "华为风格-表达式求值",
+      "difficulty": "Medium",
+      "tags": ["栈", "递归"],
+      "description": "支持括号和四则运算的表达式计算。",
+      "target": "stack"
+    }
+  ]
+}
