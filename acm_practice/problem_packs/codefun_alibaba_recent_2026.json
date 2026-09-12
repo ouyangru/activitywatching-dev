@@ -1,0 +1,176 @@
+{
+  "pack": "CodeFun Alibaba Recent 2026 (Adapted)",
+  "source": "Alibaba",
+  "category": "recent_written_test",
+  "description": "根据 CodeFun 公开页面整理的近期阿里笔试原创转述版；测试数据由本题库自行构造。",
+  "problems": [
+    {
+      "source": "Alibaba",
+      "source_date": "2026-04-25",
+      "source_problem_id": "P4839",
+      "source_url": "https://codefun2000.com/p/P4839",
+      "adapted": true,
+      "time_limit_ms": 2000,
+      "memory_limit_mb": 256,
+      "starter_code": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    // TODO: write your solution here\n\n    return 0;\n}\n",
+      "id": "codefun-ali-20260425-insertion-order",
+      "title": "近期改编：字符串的插入构造顺序",
+      "difficulty": "Easy",
+      "category": "combinatorics",
+      "tags": [
+        "组合数学",
+        "阶乘"
+      ],
+      "description": "从空串开始，每一步在当前字符串的任意位置插入一个指定字符。统计有多少种由位置选择和插入字符共同确定的操作序列，能够在 n 步后得到给定字符串。",
+      "input_format": "第一行输入测试组数 T。每组先输入长度 n，再输入一个长度为 n 的小写字符串 s。",
+      "output_format": "每组输出方案数对 1000000007 取模的结果。",
+      "constraints": [
+        "1 ≤ T ≤ 200000",
+        "所有 n 的总和不超过 2000000"
+      ],
+      "samples": [
+        {
+          "input": "2\n1\na\n3\naba\n",
+          "output": "1\n6\n"
+        }
+      ],
+      "hidden_tests": [
+        {
+          "input": "3\n2\naa\n4\nabcd\n5\naaaaa\n",
+          "output": "2\n24\n120\n"
+        },
+        {
+          "input": "1\n10\nalgorithmx\n",
+          "output": "3628800\n"
+        }
+      ],
+      "reference_solution": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    const long long MOD = 1000000007LL;\n    int tests;\n    cin >> tests;\n    while (tests--) {\n        int n;\n        string s;\n        cin >> n >> s;\n        long long answer = 1;\n        for (int i = 2; i <= n; ++i) answer = answer * i % MOD;\n        cout << answer << '\\n';\n    }\n    return 0;\n}\n"
+    },
+    {
+      "source": "Alibaba",
+      "source_date": "2026-04-01",
+      "source_problem_id": "P4715",
+      "source_url": "https://codefun2000.com/new-p/P4715",
+      "adapted": true,
+      "time_limit_ms": 2000,
+      "memory_limit_mb": 256,
+      "starter_code": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    // TODO: write your solution here\n\n    return 0;\n}\n",
+      "id": "codefun-ali-20260401-mod-max",
+      "title": "近期改编：等差序列的最大模值",
+      "difficulty": "Medium",
+      "category": "number_theory",
+      "tags": [
+        "最大公约数",
+        "模运算",
+        "等差数列"
+      ],
+      "description": "考虑无限等差序列 a[i]=a0+i*d。对每一项取模 m，求所有可能余数中的最大值。",
+      "input_format": "第一行输入测试组数 T。每组输入 a0、d、m。",
+      "output_format": "每组输出一个整数，表示能够取得的最大余数。",
+      "constraints": [
+        "1 ≤ T ≤ 100000",
+        "0 ≤ a0,d ≤ 10^18",
+        "1 ≤ m ≤ 10^18"
+      ],
+      "samples": [
+        {
+          "input": "3\n5 4 7\n3 10 6\n100 100 100\n",
+          "output": "6\n5\n0\n"
+        }
+      ],
+      "hidden_tests": [
+        {
+          "input": "4\n0 0 1\n8 0 5\n1 2 6\n7 6 9\n",
+          "output": "0\n3\n5\n7\n"
+        }
+      ],
+      "reference_solution": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    int tests;\n    cin >> tests;\n    while (tests--) {\n        long long first, difference, modulus;\n        cin >> first >> difference >> modulus;\n        long long g = std::gcd(difference, modulus);\n        cout << modulus - g + (first % g) << '\\n';\n    }\n    return 0;\n}\n"
+    },
+    {
+      "source": "Alibaba",
+      "source_date": "2026-04-01",
+      "source_problem_id": "P4716",
+      "source_url": "https://codefun2000.com/new-p/P4716",
+      "adapted": true,
+      "time_limit_ms": 2000,
+      "memory_limit_mb": 256,
+      "starter_code": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    // TODO: write your solution here\n\n    return 0;\n}\n",
+      "id": "codefun-ali-20260401-brackets",
+      "title": "近期改编：最少翻转得到平衡括号串",
+      "difficulty": "Medium",
+      "category": "stack",
+      "tags": [
+        "栈",
+        "括号序列",
+        "构造"
+      ],
+      "description": "给定偶数长度的括号串，每次可把一个位置的左括号与右括号互换。求把它变成合法括号序列所需的最少翻转次数，并输出一组对应下标。",
+      "input_format": "第一行输入测试组数 T。每组输入偶数 n 和长度为 n 的括号串。",
+      "output_format": "每组输出两行：第一行是最少翻转数 k；第二行是本题参考策略选择的升序下标。k=0 时第二行为空。",
+      "constraints": [
+        "2 ≤ n ≤ 200000 且 n 为偶数",
+        "所有测试的 n 之和不超过 200000"
+      ],
+      "samples": [
+        {
+          "input": "3\n2\n)(\n4\n()()\n4\n))((\n",
+          "output": "2\n1 2\n0\n\n2\n1 4\n"
+        }
+      ],
+      "hidden_tests": [
+        {
+          "input": "2\n4\n))))\n4\n((((\n",
+          "output": "2\n1 2\n2\n3 4\n"
+        },
+        {
+          "input": "1\n6\n())(()\n",
+          "output": "2\n3 6\n"
+        }
+      ],
+      "reference_solution": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    int tests;\n    cin >> tests;\n    while (tests--) {\n        int n;\n        string s;\n        cin >> n >> s;\n        vector<int> unmatchedOpen;\n        vector<int> unmatchedClose;\n        for (int i = 0; i < n; ++i) {\n            if (s[i] == '(') {\n                unmatchedOpen.push_back(i + 1);\n            } else if (!unmatchedOpen.empty()) {\n                unmatchedOpen.pop_back();\n            } else {\n                unmatchedClose.push_back(i + 1);\n            }\n        }\n\n        vector<int> answer;\n        int closeFlips = (static_cast<int>(unmatchedClose.size()) + 1) / 2;\n        for (int i = 0; i < closeFlips; ++i) answer.push_back(unmatchedClose[i]);\n        int openFlips = (static_cast<int>(unmatchedOpen.size()) + 1) / 2;\n        for (int i = static_cast<int>(unmatchedOpen.size()) - openFlips;\n             i < static_cast<int>(unmatchedOpen.size()); ++i) {\n            answer.push_back(unmatchedOpen[i]);\n        }\n        sort(answer.begin(), answer.end());\n        cout << answer.size() << '\\n';\n        for (int i = 0; i < static_cast<int>(answer.size()); ++i) {\n            if (i) cout << ' ';\n            cout << answer[i];\n        }\n        cout << '\\n';\n    }\n    return 0;\n}\n"
+    },
+    {
+      "source": "Alibaba",
+      "source_date": "2026-04-01",
+      "source_problem_id": "P4717",
+      "source_url": "https://codefun2000.com/p/P4717",
+      "adapted": true,
+      "time_limit_ms": 2000,
+      "memory_limit_mb": 256,
+      "starter_code": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    // TODO: write your solution here\n\n    return 0;\n}\n",
+      "id": "codefun-ali-20260401-reroot-lca",
+      "title": "近期改编：动态换根的最近公共祖先",
+      "difficulty": "Hard",
+      "category": "tree",
+      "tags": [
+        "树",
+        "LCA",
+        "倍增"
+      ],
+      "description": "树本身不变，但每次查询会指定一个临时根 r。对给定节点 u、v，回答以 r 为根时它们的最近公共祖先。",
+      "input_format": "第一行输入测试组数 T。每组输入 n、q，接着 n-1 行输入无向边，再输入 q 行查询 r、u、v。",
+      "output_format": "对每个查询输出一行最近公共祖先编号。",
+      "constraints": [
+        "1 ≤ n,q ≤ 200000",
+        "所有测试的 n、q 总和分别不超过 200000"
+      ],
+      "samples": [
+        {
+          "input": "1\n7 5\n1 2\n1 3\n2 4\n2 5\n3 6\n3 7\n1 4 7\n4 1 7\n2 4 5\n5 1 2\n6 4 7\n",
+          "output": "1\n1\n2\n2\n3\n"
+        }
+      ],
+      "hidden_tests": [
+        {
+          "input": "1\n3 4\n1 2\n2 3\n1 2 3\n2 1 3\n3 1 2\n2 2 2\n",
+          "output": "2\n2\n2\n2\n"
+        },
+        {
+          "input": "1\n1 2\n1 1 1\n1 1 1\n",
+          "output": "1\n1\n"
+        }
+      ],
+      "reference_solution": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    int tests;\n    cin >> tests;\n    while (tests--) {\n        int n, q;\n        cin >> n >> q;\n        vector<vector<int>> graph(n + 1);\n        for (int i = 1; i < n; ++i) {\n            int x, y;\n            cin >> x >> y;\n            graph[x].push_back(y);\n            graph[y].push_back(x);\n        }\n\n        int log = 1;\n        while ((1 << log) <= n) ++log;\n        vector<vector<int>> up(log, vector<int>(n + 1));\n        vector<int> depth(n + 1, 0);\n        queue<int> bfs;\n        bfs.push(1);\n        up[0][1] = 1;\n        vector<char> visited(n + 1, false);\n        visited[1] = true;\n        while (!bfs.empty()) {\n            int node = bfs.front();\n            bfs.pop();\n            for (int next : graph[node]) {\n                if (visited[next]) continue;\n                visited[next] = true;\n                depth[next] = depth[node] + 1;\n                up[0][next] = node;\n                bfs.push(next);\n            }\n        }\n        for (int level = 1; level < log; ++level) {\n            for (int node = 1; node <= n; ++node) {\n                up[level][node] = up[level - 1][up[level - 1][node]];\n            }\n        }\n\n        auto lca = [&](int a, int b) {\n            if (depth[a] < depth[b]) swap(a, b);\n            int delta = depth[a] - depth[b];\n            for (int level = 0; level < log; ++level) {\n                if (delta & (1 << level)) a = up[level][a];\n            }\n            if (a == b) return a;\n            for (int level = log - 1; level >= 0; --level) {\n                if (up[level][a] != up[level][b]) {\n                    a = up[level][a];\n                    b = up[level][b];\n                }\n            }\n            return up[0][a];\n        };\n\n        while (q--) {\n            int root, u, v;\n            cin >> root >> u >> v;\n            int candidates[3] = {lca(u, v), lca(u, root), lca(v, root)};\n            int answer = candidates[0];\n            for (int node : candidates) {\n                if (depth[node] > depth[answer]) answer = node;\n            }\n            cout << answer << '\\n';\n        }\n    }\n    return 0;\n}\n"
+    }
+  ]
+}

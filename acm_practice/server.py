@@ -76,6 +76,10 @@ def _public_problem(problem: dict[str, Any]) -> dict[str, Any]:
         "samples": problem.get("samples", []),
         "starter_code": problem.get("starter_code", ""),
         "tags": problem.get("tags", []),
+        "source_date": problem.get("source_date"),
+        "source_problem_id": problem.get("source_problem_id"),
+        "source_url": problem.get("source_url"),
+        "adapted": bool(problem.get("adapted", False)),
     }
 
 

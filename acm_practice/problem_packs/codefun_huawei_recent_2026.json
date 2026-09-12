@@ -1,0 +1,371 @@
+{
+  "pack": "CodeFun Huawei Recent 2026 (Adapted)",
+  "source": "Huawei",
+  "category": "recent_written_test",
+  "description": "根据 CodeFun 公开页面整理的近期华为笔试原创转述版；测试数据由本题库自行构造。",
+  "problems": [
+    {
+      "source": "Huawei",
+      "source_date": "2026-08-19",
+      "source_problem_id": "P5265",
+      "source_url": "https://codefun2000.com/new-p/P5265",
+      "adapted": true,
+      "time_limit_ms": 2000,
+      "memory_limit_mb": 256,
+      "starter_code": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    // TODO: write your solution here\n\n    return 0;\n}\n",
+      "id": "codefun-huawei-20260819-maze",
+      "title": "近期改编：带生命值的迷宫逃脱",
+      "difficulty": "Medium",
+      "category": "bfs_state",
+      "tags": [
+        "BFS",
+        "状态扩展",
+        "网格"
+      ],
+      "description": "在网格中寻找从起点到出口的最短路径。墙不可通过，陷阱会扣除一点生命值，生命值降到零则该路径失败；药水会把生命值恢复到初始上限。相同坐标但不同剩余生命值应视作不同搜索状态。",
+      "input_format": "第一行输入行数 m、列数 n 和初始生命值 k。接下来 m 行每行 n 个整数：0 为空地、1 为墙、2 为陷阱、3 为唯一的起点、4 为唯一的出口、5 为药水。",
+      "output_format": "输出到达出口的最少步数；无法到达时输出 -1。",
+      "constraints": [
+        "1 ≤ m,n ≤ 50",
+        "1 ≤ k ≤ 20",
+        "只能上下左右移动"
+      ],
+      "samples": [
+        {
+          "input": "4 5 3\n3 0 0 0 0\n0 1 0 1 0\n0 2 0 2 0\n0 0 0 0 4\n",
+          "output": "7\n"
+        }
+      ],
+      "hidden_tests": [
+        {
+          "input": "3 3 2\n3 1 2\n1 2 0\n0 0 4\n",
+          "output": "-1\n"
+        },
+        {
+          "input": "3 3 1\n3 0 2\n1 2 0\n0 0 4\n",
+          "output": "-1\n"
+        },
+        {
+          "input": "3 4 2\n3 2 0 2\n2 0 1 4\n5 0 0 2\n",
+          "output": "6\n"
+        },
+        {
+          "input": "1 2 1\n3 4\n",
+          "output": "1\n"
+        }
+      ],
+      "reference_solution": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    int m, n, maxHealth;\n    cin >> m >> n >> maxHealth;\n    vector<vector<int>> grid(m, vector<int>(n));\n    int sx = -1, sy = -1;\n    for (int i = 0; i < m; ++i) {\n        for (int j = 0; j < n; ++j) {\n            cin >> grid[i][j];\n            if (grid[i][j] == 3) sx = i, sy = j;\n        }\n    }\n\n    vector<vector<int>> best(m, vector<int>(n, -1));\n    queue<array<int, 4>> q;\n    q.push({sx, sy, maxHealth, 0});\n    best[sx][sy] = maxHealth;\n    const int dx[4] = {1, -1, 0, 0};\n    const int dy[4] = {0, 0, 1, -1};\n\n    while (!q.empty()) {\n        auto state = q.front();\n        q.pop();\n        int x = state[0], y = state[1], health = state[2], distance = state[3];\n        if (grid[x][y] == 4) {\n            cout << distance << '\\n';\n            return 0;\n        }\n        for (int d = 0; d < 4; ++d) {\n            int nx = x + dx[d], ny = y + dy[d];\n            if (nx < 0 || nx >= m || ny < 0 || ny >= n || grid[nx][ny] == 1) continue;\n            int nextHealth = health;\n            if (grid[nx][ny] == 2) --nextHealth;\n            if (nextHealth <= 0) continue;\n            if (grid[nx][ny] == 5) nextHealth = maxHealth;\n            if (nextHealth <= best[nx][ny]) continue;\n            best[nx][ny] = nextHealth;\n            q.push({nx, ny, nextHealth, distance + 1});\n        }\n    }\n\n    cout << -1 << '\\n';\n    return 0;\n}\n"
+    },
+    {
+      "source": "Huawei",
+      "source_date": "2026-08-19",
+      "source_problem_id": "P5263",
+      "source_url": "https://codefun2000.com/new-p/P5263",
+      "adapted": true,
+      "time_limit_ms": 2000,
+      "memory_limit_mb": 256,
+      "starter_code": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    // TODO: write your solution here\n\n    return 0;\n}\n",
+      "id": "codefun-huawei-20260819-pipeline",
+      "title": "近期改编：流水线连续分段的最小瓶颈",
+      "difficulty": "Medium",
+      "category": "binary_search",
+      "tags": [
+        "二分答案",
+        "贪心",
+        "数组分割"
+      ],
+      "description": "把一组按固定顺序执行的计算层划分给 k 个节点，每个节点必须得到一段连续且非空的层。节点负载等于所分配层的工作量之和，目标是让所有节点中的最大负载尽可能小。",
+      "input_format": "第一行输入层数 n；第二行输入 n 个正整数工作量；第三行输入节点数 k。",
+      "output_format": "输出恰好划分成 k 个非空连续段时，最小可能的最大段和。",
+      "constraints": [
+        "1 ≤ k ≤ n ≤ 200000",
+        "1 ≤ w[i] ≤ 10^9",
+        "答案使用 64 位整数"
+      ],
+      "samples": [
+        {
+          "input": "5\n3 1 4 1 5\n2\n",
+          "output": "8\n"
+        }
+      ],
+      "hidden_tests": [
+        {
+          "input": "4\n10 20 30 40\n2\n",
+          "output": "60\n"
+        },
+        {
+          "input": "5\n1 1 1 1 1\n5\n",
+          "output": "1\n"
+        },
+        {
+          "input": "3\n7 2 9\n1\n",
+          "output": "18\n"
+        },
+        {
+          "input": "6\n5 1 2 7 3 4\n3\n",
+          "output": "9\n"
+        }
+      ],
+      "reference_solution": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    int n;\n    cin >> n;\n    vector<long long> work(n);\n    long long low = 0, high = 0;\n    for (long long& value : work) {\n        cin >> value;\n        low = max(low, value);\n        high += value;\n    }\n    int k;\n    cin >> k;\n\n    auto needed = [&](long long limit) {\n        int parts = 1;\n        long long current = 0;\n        for (long long value : work) {\n            if (current + value > limit) {\n                ++parts;\n                current = 0;\n            }\n            current += value;\n        }\n        return parts;\n    };\n\n    while (low < high) {\n        long long mid = low + (high - low) / 2;\n        if (needed(mid) <= k) high = mid;\n        else low = mid + 1;\n    }\n    cout << low << '\\n';\n    return 0;\n}\n"
+    },
+    {
+      "source": "Huawei",
+      "source_date": "2026-08-19",
+      "source_problem_id": "P5267",
+      "source_url": "https://codefun2000.com/new-p/P5267",
+      "adapted": true,
+      "time_limit_ms": 2000,
+      "memory_limit_mb": 256,
+      "starter_code": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    // TODO: write your solution here\n\n    return 0;\n}\n",
+      "id": "codefun-huawei-20260819-flow-balance",
+      "title": "近期改编：双端口流量均值平衡",
+      "difficulty": "Medium / Hard",
+      "category": "subset_dp",
+      "tags": [
+        "动态规划",
+        "子集和",
+        "数学变形"
+      ],
+      "description": "把全部消息分成两个非空组，要求两组消息权重的平均值相等。若存在多种方案，输出两组权重和较小值能够达到的最小值。",
+      "input_format": "输入一行若干整数，表示每条消息的权重；输入读到文件结束。权重只可能是 0、5、15、20。",
+      "output_format": "若不存在合法划分，输出一行 0。若存在，第一行输出 1，第二行输出所有合法划分中较小组权重和的最小值。",
+      "constraints": [
+        "1 ≤ 消息数 ≤ 100",
+        "权重属于 {0,5,15,20}",
+        "两组都不能为空"
+      ],
+      "samples": [
+        {
+          "input": "5 20 15 15 5 5 5 20 5 5 15 15\n",
+          "output": "1\n65\n"
+        }
+      ],
+      "hidden_tests": [
+        {
+          "input": "15 20\n",
+          "output": "0\n"
+        },
+        {
+          "input": "15 20 5 20\n",
+          "output": "1\n15\n"
+        },
+        {
+          "input": "5 5 5\n",
+          "output": "1\n5\n"
+        },
+        {
+          "input": "20\n",
+          "output": "0\n"
+        },
+        {
+          "input": "0 0\n",
+          "output": "1\n0\n"
+        }
+      ],
+      "reference_solution": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    vector<int> values;\n    int value;\n    while (cin >> value) values.push_back(value);\n    int n = static_cast<int>(values.size());\n    if (n < 2) {\n        cout << 0 << '\\n';\n        return 0;\n    }\n    int total = accumulate(values.begin(), values.end(), 0);\n    vector<vector<char>> dp(n + 1, vector<char>(total + 1, false));\n    dp[0][0] = true;\n    int used = 0;\n    for (int x : values) {\n        ++used;\n        for (int count = used; count >= 1; --count) {\n            for (int sum = total; sum >= x; --sum) {\n                if (dp[count - 1][sum - x]) dp[count][sum] = true;\n            }\n        }\n    }\n\n    int answer = INT_MAX;\n    for (int count = 1; count < n; ++count) {\n        long long product = 1LL * count * total;\n        if (product % n != 0) continue;\n        int target = static_cast<int>(product / n);\n        if (dp[count][target]) answer = min(answer, min(target, total - target));\n    }\n    if (answer == INT_MAX) cout << 0 << '\\n';\n    else cout << 1 << '\\n' << answer << '\\n';\n    return 0;\n}\n"
+    },
+    {
+      "source": "Huawei",
+      "source_date": "2026-08-05",
+      "source_problem_id": "P5198",
+      "source_url": "https://codefun2000.com/new-p/P5198",
+      "adapted": true,
+      "time_limit_ms": 2000,
+      "memory_limit_mb": 256,
+      "starter_code": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    // TODO: write your solution here\n\n    return 0;\n}\n",
+      "id": "codefun-huawei-20260805-stations",
+      "title": "近期改编：基站邻域类型识别",
+      "difficulty": "Medium",
+      "category": "simulation",
+      "tags": [
+        "模拟",
+        "曼哈顿距离",
+        "聚类基础"
+      ],
+      "description": "根据曼哈顿距离定义每个基站的邻域，邻域包含基站自身。邻域数量达到阈值的点是核心点；非核心点若邻域内存在核心点则为边界点；其他点为噪声点。",
+      "input_format": "第一行输入基站数 n、距离阈值 epsilon 和最少邻域点数 minPoints。之后 n 行输入每个基站的二维整数坐标。",
+      "output_format": "按输入顺序输出 n 行：核心点输出 0，边界点输出 1，噪声点输出 2。",
+      "constraints": [
+        "1 ≤ n ≤ 2000",
+        "0 ≤ epsilon ≤ 10000",
+        "1 ≤ minPoints ≤ n",
+        "坐标绝对值不超过 10000"
+      ],
+      "samples": [
+        {
+          "input": "5 2 3\n0 0\n1 0\n0 1\n3 0\n10 10\n",
+          "output": "0\n0\n0\n1\n2\n"
+        }
+      ],
+      "hidden_tests": [
+        {
+          "input": "3 0 1\n1 1\n2 2\n3 3\n",
+          "output": "0\n0\n0\n"
+        },
+        {
+          "input": "4 1 3\n0 0\n1 0\n2 0\n10 10\n",
+          "output": "1\n0\n1\n2\n"
+        },
+        {
+          "input": "1 5 2\n0 0\n",
+          "output": "2\n"
+        }
+      ],
+      "reference_solution": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    int n, minPoints;\n    long long epsilon;\n    cin >> n >> epsilon >> minPoints;\n    vector<long long> x(n), y(n);\n    for (int i = 0; i < n; ++i) cin >> x[i] >> y[i];\n\n    vector<vector<char>> near(n, vector<char>(n, false));\n    vector<int> count(n, 0);\n    for (int i = 0; i < n; ++i) {\n        for (int j = 0; j < n; ++j) {\n            long long distance = llabs(x[i] - x[j]) + llabs(y[i] - y[j]);\n            if (distance <= epsilon) {\n                near[i][j] = true;\n                ++count[i];\n            }\n        }\n    }\n\n    vector<char> core(n, false);\n    for (int i = 0; i < n; ++i) core[i] = count[i] >= minPoints;\n    for (int i = 0; i < n; ++i) {\n        if (core[i]) {\n            cout << 0 << '\\n';\n            continue;\n        }\n        bool border = false;\n        for (int j = 0; j < n; ++j) {\n            if (near[i][j] && core[j]) {\n                border = true;\n                break;\n            }\n        }\n        cout << (border ? 1 : 2) << '\\n';\n    }\n    return 0;\n}\n"
+    },
+    {
+      "source": "Huawei",
+      "source_date": "2026-07-01",
+      "source_problem_id": "P5158",
+      "source_url": "https://codefun2000.com/new-p/P5158",
+      "adapted": true,
+      "time_limit_ms": 2000,
+      "memory_limit_mb": 256,
+      "starter_code": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    // TODO: write your solution here\n\n    return 0;\n}\n",
+      "id": "codefun-huawei-20260701-repeat",
+      "title": "近期改编：最短重复模式",
+      "difficulty": "Medium",
+      "category": "kmp",
+      "tags": [
+        "KMP",
+        "前缀函数",
+        "字符串"
+      ],
+      "description": "判断字符串是否能由更短的模式串重复得到，并找出长度最短的模式。为了让输出格式统一，即使不存在重复，也把原串视为重复一次。",
+      "input_format": "输入一个仅由数字和英文字母组成的非空字符串 s。",
+      "output_format": "输出最短模式串和重复次数，中间用一个空格分隔。",
+      "constraints": [
+        "1 ≤ |s| ≤ 1000000"
+      ],
+      "samples": [
+        {
+          "input": "abcabcabc\n",
+          "output": "abc 3\n"
+        }
+      ],
+      "hidden_tests": [
+        {
+          "input": "aaabbb\n",
+          "output": "aaabbb 1\n"
+        },
+        {
+          "input": "aaaa\n",
+          "output": "a 4\n"
+        },
+        {
+          "input": "abab\n",
+          "output": "ab 2\n"
+        },
+        {
+          "input": "x\n",
+          "output": "x 1\n"
+        }
+      ],
+      "reference_solution": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    string s;\n    cin >> s;\n    int n = static_cast<int>(s.size());\n    vector<int> prefix(n, 0);\n    for (int i = 1; i < n; ++i) {\n        int j = prefix[i - 1];\n        while (j > 0 && s[i] != s[j]) j = prefix[j - 1];\n        if (s[i] == s[j]) ++j;\n        prefix[i] = j;\n    }\n    int period = n - prefix[n - 1];\n    if (n % period != 0) period = n;\n    cout << s.substr(0, period) << ' ' << n / period << '\\n';\n    return 0;\n}\n"
+    },
+    {
+      "source": "Huawei",
+      "source_date": "2026-07-01",
+      "source_problem_id": "P5159",
+      "source_url": "https://codefun2000.com/new-p/P5159",
+      "adapted": true,
+      "time_limit_ms": 2000,
+      "memory_limit_mb": 256,
+      "starter_code": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    // TODO: write your solution here\n\n    return 0;\n}\n",
+      "id": "codefun-huawei-20260701-bombs",
+      "title": "近期改编：建筑覆盖的最少装置数",
+      "difficulty": "Medium",
+      "category": "greedy",
+      "tags": [
+        "贪心",
+        "排序",
+        "区间覆盖"
+      ],
+      "description": "一条直线上有若干建筑。装置只能放在某栋建筑的位置，放置后可以覆盖与它距离不超过 R 的所有建筑。求覆盖全部建筑所需的最少装置数。",
+      "input_format": "第一行输入建筑数 n 和覆盖半径 R；第二行输入 n 个互不相同的建筑坐标，输入顺序不保证有序。",
+      "output_format": "输出覆盖全部建筑所需的最少装置数。",
+      "constraints": [
+        "1 ≤ n ≤ 200000",
+        "0 ≤ R ≤ 10^9",
+        "|坐标| ≤ 10^9"
+      ],
+      "samples": [
+        {
+          "input": "6 10\n1 2 11 19 30 31\n",
+          "output": "2\n"
+        }
+      ],
+      "hidden_tests": [
+        {
+          "input": "1 0\n5\n",
+          "output": "1\n"
+        },
+        {
+          "input": "4 0\n1 2 3 4\n",
+          "output": "4\n"
+        },
+        {
+          "input": "5 2\n1 2 3 8 9\n",
+          "output": "2\n"
+        },
+        {
+          "input": "6 3\n20 1 7 4 10 13\n",
+          "output": "3\n"
+        }
+      ],
+      "reference_solution": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    int n;\n    long long radius;\n    cin >> n >> radius;\n    vector<long long> position(n);\n    for (long long& x : position) cin >> x;\n    sort(position.begin(), position.end());\n\n    int answer = 0;\n    int i = 0;\n    while (i < n) {\n        long long leftmost = position[i];\n        int centerIndex = i;\n        while (centerIndex + 1 < n && position[centerIndex + 1] <= leftmost + radius) {\n            ++centerIndex;\n        }\n        long long coveredUntil = position[centerIndex] + radius;\n        ++answer;\n        while (i < n && position[i] <= coveredUntil) ++i;\n    }\n    cout << answer << '\\n';\n    return 0;\n}\n"
+    },
+    {
+      "source": "Huawei",
+      "source_date": "2026-07-01",
+      "source_problem_id": "P5160",
+      "source_url": "https://codefun2000.com/new-p/P5160",
+      "adapted": true,
+      "time_limit_ms": 2000,
+      "memory_limit_mb": 256,
+      "starter_code": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    // TODO: write your solution here\n\n    return 0;\n}\n",
+      "id": "codefun-huawei-20260701-energy",
+      "title": "近期改编：递增代价的资源分配",
+      "difficulty": "Hard",
+      "category": "greedy",
+      "tags": [
+        "贪心",
+        "排序",
+        "资源分配"
+      ],
+      "description": "有 n 个接收器和 m 个资源。接收器 i 第 k 次接收资源时会产生 k*a[i] 的代价；把能量为 b 的资源放入该槽位可获得 max(0,b-k*a[i]) 收益。每个资源最多使用一次，求最大总收益。",
+      "input_format": "第一行输入 n 和 m；第二行输入 n 个基础代价 a；第三行输入 m 个资源能量 b。",
+      "output_format": "输出最大总收益。",
+      "constraints": [
+        "1 ≤ n,m ≤ 2000",
+        "1 ≤ a[i],b[i] ≤ 10^9",
+        "答案使用 64 位整数"
+      ],
+      "samples": [
+        {
+          "input": "2 3\n5 100\n20 15 10\n",
+          "output": "20\n"
+        }
+      ],
+      "hidden_tests": [
+        {
+          "input": "1 3\n2\n10 10 10\n",
+          "output": "18\n"
+        },
+        {
+          "input": "2 2\n3 4\n5 5\n",
+          "output": "3\n"
+        },
+        {
+          "input": "3 2\n10 20 30\n1 2\n",
+          "output": "0\n"
+        },
+        {
+          "input": "2 4\n1 3\n8 7 6 5\n",
+          "output": "20\n"
+        }
+      ],
+      "reference_solution": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    int n, m;\n    cin >> n >> m;\n    vector<long long> base(n), crystal(m);\n    for (long long& x : base) cin >> x;\n    for (long long& x : crystal) cin >> x;\n\n    vector<long long> costs;\n    costs.reserve(static_cast<size_t>(n) * m);\n    for (long long a : base) {\n        for (int k = 1; k <= m; ++k) costs.push_back(a * k);\n    }\n    sort(costs.begin(), costs.end());\n    sort(crystal.rbegin(), crystal.rend());\n\n    long long answer = 0;\n    for (int i = 0; i < m; ++i) {\n        answer += max(0LL, crystal[i] - costs[i]);\n    }\n    cout << answer << '\\n';\n    return 0;\n}\n"
+    }
+  ]
+}
