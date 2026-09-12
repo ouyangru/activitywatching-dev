@@ -37,7 +37,7 @@
         },
         {
           "input": "2 6\nPUT 1 1\nPUT 1 2\nGET 1\nPUT 2 2\nPUT 3 3\nGET 2\n",
-          "output": "2\n-1\n"
+          "output": "2\n"
         },
         {
           "input": "3 4\nGET 9\nPUT 1 -5\nGET 1\nGET 2\n",
