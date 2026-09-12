@@ -1,0 +1,298 @@
+{
+  "pack": "OneFly Huawei 2026-09-11 (Adapted)",
+  "source": "Huawei",
+  "category": "recent_written_test",
+  "description": "根据 OneFly 公开笔试复盘整理的原创转述版；参考解与测试数据由本题库补充。",
+  "problems": [
+    {
+      "source": "Huawei",
+      "source_date": "2026-09-11",
+      "adapted": true,
+      "time_limit_ms": 2000,
+      "memory_limit_mb": 256,
+      "starter_code": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    // TODO: write your solution here\n\n    return 0;\n}\n",
+      "source_problem_id": "onefly-huawei-dev-20260911-1",
+      "source_url": "https://onefly.top/zero2Leetcode/04_real_interviews/huawei/dev-20260911/index.html",
+      "id": "onefly-huawei-20260911-factor-jump",
+      "title": "最新改编：因数跳跃",
+      "difficulty": "Medium",
+      "category": "graph_bfs",
+      "tags": [
+        "BFS",
+        "质因数分解",
+        "隐式图"
+      ],
+      "description": "给定一个正整数数组，初始位于下标 0。站在下标 i 时，可以选择 nums[i] 的任意一个不同质因数 p，并跳到 i-p 或 i+p；越界位置不可选。判断能否到达最后一个下标。",
+      "input_format": "输入一行若干正整数，依次组成数组 nums，读取到文件结束。",
+      "output_format": "能到达最后一个下标输出 true，否则输出 false。",
+      "constraints": [
+        "1 ≤ 数组长度 ≤ 10000",
+        "1 ≤ nums[i] ≤ 1000"
+      ],
+      "samples": [
+        {
+          "input": "5 2 3 5 1 10 7\n",
+          "output": "false\n"
+        },
+        {
+          "input": "12 2 4 1 1\n",
+          "output": "true\n"
+        }
+      ],
+      "hidden_tests": [
+        {
+          "input": "1 1\n",
+          "output": "false\n"
+        },
+        {
+          "input": "2 1 1\n",
+          "output": "true\n"
+        },
+        {
+          "input": "49 1 1 1 1 1 1 2\n",
+          "output": "true\n"
+        },
+        {
+          "input": "2 1 1 1\n",
+          "output": "false\n"
+        },
+        {
+          "input": "7\n",
+          "output": "true\n"
+        }
+      ],
+      "reference_solution": "#include <bits/stdc++.h>\nusing namespace std;\n\nvector<int> primeFactors(int value) {\n    vector<int> factors;\n    for (int p = 2; p * p <= value; ++p) {\n        if (value % p != 0) continue;\n        factors.push_back(p);\n        while (value % p == 0) value /= p;\n    }\n    if (value > 1) factors.push_back(value);\n    return factors;\n}\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    vector<int> nums;\n    int value;\n    while (cin >> value) nums.push_back(value);\n    const int n = static_cast<int>(nums.size());\n    if (n == 0) {\n        cout << \"false\\n\";\n        return 0;\n    }\n\n    vector<char> visited(n, false);\n    queue<int> pending;\n    visited[0] = true;\n    pending.push(0);\n    while (!pending.empty()) {\n        int index = pending.front();\n        pending.pop();\n        if (index == n - 1) {\n            cout << \"true\\n\";\n            return 0;\n        }\n        for (int factor : primeFactors(nums[index])) {\n            for (int next : {index - factor, index + factor}) {\n                if (next >= 0 && next < n && !visited[next]) {\n                    visited[next] = true;\n                    pending.push(next);\n                }\n            }\n        }\n    }\n    cout << \"false\\n\";\n    return 0;\n}\n"
+    },
+    {
+      "source": "Huawei",
+      "source_date": "2026-09-11",
+      "adapted": true,
+      "time_limit_ms": 2000,
+      "memory_limit_mb": 256,
+      "starter_code": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    // TODO: write your solution here\n\n    return 0;\n}\n",
+      "source_problem_id": "onefly-huawei-dev-20260911-2",
+      "source_url": "https://onefly.top/zero2Leetcode/04_real_interviews/huawei/dev-20260911/index.html",
+      "id": "onefly-huawei-20260911-task-schedule",
+      "title": "最新改编：有限跳过的任务调度",
+      "difficulty": "Hard",
+      "category": "dynamic_programming",
+      "tags": [
+        "动态规划",
+        "单调队列",
+        "序列选择"
+      ],
+      "description": "任务按固定顺序排列，每个任务有执行代价。请选择恰好 k 个任务并保持原相对顺序，使总代价最小。开头、相邻已选任务之间、结尾处连续跳过的任务数都不能超过 maxSkip。",
+      "input_format": "第一行输入任务代价数组；第二行输入 k；第三行输入 maxSkip。",
+      "output_format": "输出满足条件的最小总代价；不存在合法选择时输出 -1。",
+      "constraints": [
+        "1 ≤ 任务数 ≤ 1000",
+        "0 ≤ k ≤ 任务数",
+        "0 ≤ maxSkip ≤ 1000",
+        "1 ≤ cost[i] ≤ 10000"
+      ],
+      "samples": [
+        {
+          "input": "1 2 3 4 5\n3\n0\n",
+          "output": "-1\n"
+        },
+        {
+          "input": "3 1 4 2 5\n3\n2\n",
+          "output": "6\n"
+        },
+        {
+          "input": "1 100 1 100 1\n3\n1\n",
+          "output": "3\n"
+        }
+      ],
+      "hidden_tests": [
+        {
+          "input": "5 1 2 9\n2\n1\n",
+          "output": "3\n"
+        },
+        {
+          "input": "1 2 3\n0\n3\n",
+          "output": "0\n"
+        },
+        {
+          "input": "1 2 3\n0\n2\n",
+          "output": "-1\n"
+        },
+        {
+          "input": "8 1 1 8\n1\n2\n",
+          "output": "1\n"
+        },
+        {
+          "input": "1 2 3\n3\n0\n",
+          "output": "6\n"
+        }
+      ],
+      "reference_solution": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    string line;\n    getline(cin, line);\n    stringstream parser(line);\n    vector<long long> cost;\n    long long value;\n    while (parser >> value) cost.push_back(value);\n    int k, maxSkip;\n    cin >> k >> maxSkip;\n    int n = static_cast<int>(cost.size());\n\n    if (k == 0) {\n        cout << (n <= maxSkip ? 0 : -1) << '\\n';\n        return 0;\n    }\n    if (k > n) {\n        cout << -1 << '\\n';\n        return 0;\n    }\n\n    const long long INF = (1LL << 60);\n    vector<long long> previous(n, INF), current(n, INF);\n    for (int i = 0; i < n && i <= maxSkip; ++i) previous[i] = cost[i];\n\n    for (int selected = 2; selected <= k; ++selected) {\n        fill(current.begin(), current.end(), INF);\n        deque<int> candidates;\n        for (int i = 0; i < n; ++i) {\n            int add = i - 1;\n            if (add >= 0 && previous[add] < INF) {\n                while (!candidates.empty() && previous[candidates.back()] >= previous[add]) {\n                    candidates.pop_back();\n                }\n                candidates.push_back(add);\n            }\n            int firstAllowed = i - maxSkip - 1;\n            while (!candidates.empty() && candidates.front() < firstAllowed) candidates.pop_front();\n            if (!candidates.empty()) current[i] = previous[candidates.front()] + cost[i];\n        }\n        previous.swap(current);\n    }\n\n    long long answer = INF;\n    int firstLast = max(0, n - 1 - maxSkip);\n    for (int i = firstLast; i < n; ++i) answer = min(answer, previous[i]);\n    cout << (answer == INF ? -1 : answer) << '\\n';\n    return 0;\n}\n"
+    },
+    {
+      "source": "Huawei",
+      "source_date": "2026-09-11",
+      "adapted": true,
+      "time_limit_ms": 2000,
+      "memory_limit_mb": 256,
+      "starter_code": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    // TODO: write your solution here\n\n    return 0;\n}\n",
+      "source_problem_id": "onefly-huawei-dev-20260911-3",
+      "source_url": "https://onefly.top/zero2Leetcode/04_real_interviews/huawei/dev-20260911/index.html",
+      "id": "onefly-huawei-20260911-design-combinations",
+      "title": "最新改编：算法题组合设计",
+      "difficulty": "Medium",
+      "category": "backtracking",
+      "tags": [
+        "回溯",
+        "剪枝",
+        "字典序"
+      ],
+      "description": "有 n 个编号为 1 到 n 的模块，每个模块有难度值。请选择恰好 k 个编号递增的模块，相邻两个所选编号之差必须大于 d，且难度总和位于闭区间 [low, high]。统计全部方案，并输出字典序最小的至多 3 组编号。",
+      "input_format": "第一行输入 n、k、d、low、high；第二行输入 n 个模块的难度值。",
+      "output_format": "第一行输出合法方案总数，随后按字典序输出至多 3 行方案；每行编号以空格分隔。",
+      "constraints": [
+        "1 ≤ n ≤ 20",
+        "0 ≤ k ≤ n",
+        "0 ≤ d ≤ n",
+        "1 ≤ difficulty[i] ≤ 100",
+        "0 ≤ low ≤ high ≤ 1000"
+      ],
+      "samples": [
+        {
+          "input": "5 3 1 10 20\n3 5 2 4 6\n",
+          "output": "1\n1 3 5\n"
+        },
+        {
+          "input": "4 2 0 5 15\n2 3 4 5\n",
+          "output": "6\n1 2\n1 3\n1 4\n"
+        }
+      ],
+      "hidden_tests": [
+        {
+          "input": "3 2 1 100 200\n1 2 3\n",
+          "output": "0\n"
+        },
+        {
+          "input": "6 2 1 5 7\n3 2 4 1 5 2\n",
+          "output": "4\n1 3\n1 6\n2 5\n"
+        },
+        {
+          "input": "3 0 0 0 0\n7 8 9\n",
+          "output": "1\n\n"
+        },
+        {
+          "input": "1 1 0 5 5\n5\n",
+          "output": "1\n1\n"
+        }
+      ],
+      "reference_solution": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    int n, k, gap, low, high;\n    cin >> n >> k >> gap >> low >> high;\n    vector<int> difficulty(n + 1);\n    for (int i = 1; i <= n; ++i) cin >> difficulty[i];\n\n    long long total = 0;\n    vector<vector<int>> firstThree;\n    vector<int> chosen;\n\n    function<void(int, int)> search = [&](int nextIndex, int sum) {\n        if (static_cast<int>(chosen.size()) == k) {\n            if (sum >= low && sum <= high) {\n                ++total;\n                if (firstThree.size() < 3) firstThree.push_back(chosen);\n            }\n            return;\n        }\n        if (sum > high) return;\n        int needed = k - static_cast<int>(chosen.size());\n        for (int index = nextIndex; index <= n; ++index) {\n            int remainingSpan = n - index;\n            if (needed > 1 && remainingSpan < (needed - 1) * (gap + 1)) break;\n            chosen.push_back(index);\n            search(index + gap + 1, sum + difficulty[index]);\n            chosen.pop_back();\n        }\n    };\n\n    search(1, 0);\n    cout << total << '\\n';\n    for (const auto& combination : firstThree) {\n        for (int i = 0; i < static_cast<int>(combination.size()); ++i) {\n            if (i) cout << ' ';\n            cout << combination[i];\n        }\n        cout << '\\n';\n    }\n    return 0;\n}\n"
+    },
+    {
+      "source": "Huawei",
+      "source_date": "2026-09-11",
+      "adapted": true,
+      "time_limit_ms": 2000,
+      "memory_limit_mb": 256,
+      "starter_code": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    // TODO: write your solution here\n\n    return 0;\n}\n",
+      "source_problem_id": "onefly-huawei-ai-20260911-1",
+      "source_url": "https://onefly.top/zero2Leetcode/04_real_interviews/huawei/ai-20260911/index.html",
+      "id": "onefly-huawei-20260911-model-pruning",
+      "title": "最新改编：连续模型块动态剪枝",
+      "difficulty": "Hard",
+      "category": "sliding_window",
+      "tags": [
+        "滑动窗口",
+        "单调队列",
+        "双指标优化"
+      ],
+      "description": "每个连续模型块有重要度 a[i] 和内存 b[i]，只能保留一个连续区间。先求内存总量不超过 M 时的最大重要度和。随后允许把区间内重要度最小的一个块量化：该块重要度变为 0，内存变为 floor(b[i]/2)；若最小重要度并列，量化其中内存最大的块。求允许量化一次或不量化时的最大重要度和。空区间得分为 0。",
+      "input_format": "第一行输入 n 和内存上限 M；第二行输入 n 个重要度 a；第三行输入 n 个内存 b。",
+      "output_format": "输出两个整数：普通方案的最大重要度、允许量化后的最大重要度。",
+      "constraints": [
+        "1 ≤ n ≤ 100000",
+        "1 ≤ a[i], b[i] ≤ 10000",
+        "1 ≤ M ≤ 10^9"
+      ],
+      "samples": [
+        {
+          "input": "4 11\n100 10 100 10\n5 2 5 2\n",
+          "output": "120 200\n"
+        },
+        {
+          "input": "3 6\n5 1 4\n3 4 3\n",
+          "output": "5 5\n"
+        }
+      ],
+      "hidden_tests": [
+        {
+          "input": "1 3\n10\n5\n",
+          "output": "0 0\n"
+        },
+        {
+          "input": "2 5\n5 4\n4 4\n",
+          "output": "5 5\n"
+        },
+        {
+          "input": "3 12\n100 1 100\n5 5 5\n",
+          "output": "101 200\n"
+        },
+        {
+          "input": "4 14\n100 1 1 100\n4 2 6 4\n",
+          "output": "102 201\n"
+        }
+      ],
+      "reference_solution": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    int n;\n    long long budget;\n    cin >> n >> budget;\n    vector<long long> importance(n), memory(n);\n    for (long long& value : importance) cin >> value;\n    for (long long& value : memory) cin >> value;\n\n    long long ordinary = 0, windowMemory = 0, windowScore = 0;\n    int left = 0;\n    for (int right = 0; right < n; ++right) {\n        windowMemory += memory[right];\n        windowScore += importance[right];\n        while (left <= right && windowMemory > budget) {\n            windowMemory -= memory[left];\n            windowScore -= importance[left++];\n        }\n        ordinary = max(ordinary, windowScore);\n    }\n\n    long long quantized = ordinary;\n    windowMemory = windowScore = 0;\n    left = 0;\n    deque<int> minimum;\n    auto notBetter = [&](int oldIndex, int newIndex) {\n        if (importance[oldIndex] != importance[newIndex]) {\n            return importance[oldIndex] > importance[newIndex];\n        }\n        return memory[oldIndex] <= memory[newIndex];\n    };\n\n    for (int right = 0; right < n; ++right) {\n        windowMemory += memory[right];\n        windowScore += importance[right];\n        while (!minimum.empty() && notBetter(minimum.back(), right)) minimum.pop_back();\n        minimum.push_back(right);\n\n        auto effectiveMemory = [&]() -> long long {\n            if (minimum.empty()) return windowMemory;\n            int chosen = minimum.front();\n            return windowMemory - (memory[chosen] + 1) / 2;\n        };\n        while (left <= right && effectiveMemory() > budget) {\n            if (!minimum.empty() && minimum.front() == left) minimum.pop_front();\n            windowMemory -= memory[left];\n            windowScore -= importance[left];\n            ++left;\n        }\n        if (left <= right && !minimum.empty()) {\n            quantized = max(quantized, windowScore - importance[minimum.front()]);\n        }\n    }\n\n    cout << ordinary << ' ' << quantized << '\\n';\n    return 0;\n}\n"
+    },
+    {
+      "source": "Huawei",
+      "source_date": "2026-09-11",
+      "adapted": true,
+      "time_limit_ms": 2000,
+      "memory_limit_mb": 256,
+      "starter_code": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    // TODO: write your solution here\n\n    return 0;\n}\n",
+      "source_problem_id": "onefly-huawei-ai-20260911-2",
+      "source_url": "https://onefly.top/zero2Leetcode/04_real_interviews/huawei/ai-20260911/index.html",
+      "id": "onefly-huawei-20260911-density-connected",
+      "title": "最新改编：文档片段密度可达",
+      "difficulty": "Hard",
+      "category": "union_find",
+      "tags": [
+        "并查集",
+        "DBSCAN",
+        "计算几何"
+      ],
+      "description": "二维平面上有 n 个文档片段。与某点欧氏距离不超过 eps 的点（含自身）组成它的邻域；邻域点数不少于 minPts 的点称为核心点。只有核心点能作为传播中间点，并可连接到其邻域内任意点。对于每个询问，判断两个点是否可由同一个核心连通分量触达。没有邻接核心点的噪声点与任何点都不连通，包括它自身。",
+      "input_format": "第一行输入 n、询问数 q、eps、minPts；接下来 n 行输入浮点坐标；最后 q 行输入两个 0 基下标。",
+      "output_format": "每个询问输出一行 1 或 0，分别表示密度连通或不连通。",
+      "constraints": [
+        "1 ≤ n,q ≤ 1000",
+        "0 ≤ eps ≤ 10^6",
+        "1 ≤ minPts ≤ n"
+      ],
+      "samples": [
+        {
+          "input": "7 4 2.0 4\n0.0 0.0\n1.0 0.0\n0.0 1.0\n1.0 1.0\n0.5 0.5\n10.0 10.0\n10.5 10.5\n0 4\n0 5\n5 6\n4 6\n",
+          "output": "1\n0\n0\n0\n"
+        },
+        {
+          "input": "4 4 1.0 2\n0 0\n1 0\n2 0\n10 0\n0 2\n0 3\n3 3\n1 1\n",
+          "output": "1\n0\n0\n1\n"
+        }
+      ],
+      "hidden_tests": [
+        {
+          "input": "2 2 0 1\n0 0\n10 10\n0 0\n0 1\n",
+          "output": "1\n0\n"
+        },
+        {
+          "input": "4 3 1.1 3\n0 0\n1 0\n2 0\n1 1\n0 2\n0 3\n0 0\n",
+          "output": "1\n1\n1\n"
+        },
+        {
+          "input": "3 2 1 3\n0 0\n10 0\n20 0\n1 1\n0 2\n",
+          "output": "0\n0\n"
+        }
+      ],
+      "reference_solution": "#include <bits/stdc++.h>\nusing namespace std;\n\nstruct DisjointSet {\n    vector<int> parent, size;\n    explicit DisjointSet(int n) : parent(n), size(n, 1) {\n        iota(parent.begin(), parent.end(), 0);\n    }\n    int find(int x) { return parent[x] == x ? x : parent[x] = find(parent[x]); }\n    void unite(int a, int b) {\n        a = find(a); b = find(b);\n        if (a == b) return;\n        if (size[a] < size[b]) swap(a, b);\n        parent[b] = a;\n        size[a] += size[b];\n    }\n};\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    int n, queryCount, minPoints;\n    long double epsilon;\n    cin >> n >> queryCount >> epsilon >> minPoints;\n    vector<long double> x(n), y(n);\n    for (int i = 0; i < n; ++i) cin >> x[i] >> y[i];\n\n    long double limit = epsilon * epsilon;\n    vector<vector<char>> near(n, vector<char>(n, false));\n    vector<int> neighborCount(n, 0);\n    for (int i = 0; i < n; ++i) {\n        for (int j = 0; j < n; ++j) {\n            long double dx = x[i] - x[j], dy = y[i] - y[j];\n            if (dx * dx + dy * dy <= limit + 1e-12L) {\n                near[i][j] = true;\n                ++neighborCount[i];\n            }\n        }\n    }\n\n    vector<char> core(n, false);\n    for (int i = 0; i < n; ++i) core[i] = neighborCount[i] >= minPoints;\n    DisjointSet components(n);\n    for (int i = 0; i < n; ++i) {\n        if (!core[i]) continue;\n        for (int j = i + 1; j < n; ++j) {\n            if (core[j] && near[i][j]) components.unite(i, j);\n        }\n    }\n\n    vector<vector<int>> memberships(n);\n    for (int point = 0; point < n; ++point) {\n        for (int candidate = 0; candidate < n; ++candidate) {\n            if (core[candidate] && near[point][candidate]) {\n                memberships[point].push_back(components.find(candidate));\n            }\n        }\n        sort(memberships[point].begin(), memberships[point].end());\n        memberships[point].erase(unique(memberships[point].begin(), memberships[point].end()), memberships[point].end());\n    }\n\n    while (queryCount--) {\n        int first, second;\n        cin >> first >> second;\n        bool connected = false;\n        for (int root : memberships[first]) {\n            if (binary_search(memberships[second].begin(), memberships[second].end(), root)) {\n                connected = true;\n                break;\n            }\n        }\n        cout << (connected ? 1 : 0) << '\\n';\n    }\n    return 0;\n}\n"
+    }
+  ]
+}
