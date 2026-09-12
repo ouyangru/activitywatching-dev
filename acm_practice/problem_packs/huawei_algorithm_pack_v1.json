@@ -1,41 +1,95 @@
 {
   "pack": "Huawei Algorithm Training v1",
+  "source": "Huawei",
   "category": "big_company",
+  "description": "华为风格算法训练补充题，已移除与主包重复的题号。",
   "problems": [
     {
-      "id": "huawei-lru-cache",
-      "title": "LRU缓存实现",
-      "tags": ["哈希", "双向链表", "系统设计"],
-      "level": 2,
-      "target": "能够独立实现并处理容量、更新顺序、删除边界"
-    },
-    {
       "id": "huawei-top-k",
-      "title": "出现频率最高的K个数字",
-      "tags": ["哈希", "堆", "排序"],
+      "title": "高频数字 Top K（首次出现优先）",
+      "difficulty": "Medium",
+      "category": "heap_hash",
+      "tags": [
+        "哈希",
+        "排序",
+        "稳定性"
+      ],
       "level": 2,
-      "target": "掌握TopK的多种实现方式"
-    },
-    {
-      "id": "huawei-ip-prefix",
-      "title": "最长前缀匹配路由表",
-      "tags": ["Trie", "网络", "位运算"],
-      "level": 1,
-      "target": "理解网络设备路由查找"
-    },
-    {
-      "id": "huawei-task-scheduler",
-      "title": "任务调度模拟器",
-      "tags": ["优先队列", "模拟", "状态机"],
-      "level": 2,
-      "target": "提升复杂规则模拟能力"
+      "time_limit_ms": 2000,
+      "memory_limit_mb": 256,
+      "description": "给定整数序列，输出出现频率最高的 k 个不同数字。频率相同时，在原序列中第一次出现得更早的数字排在前面。",
+      "input_format": "第一行输入 n 和 k，第二行输入 n 个整数。保证不同数字的数量不少于 k。",
+      "output_format": "输出 k 个数字，以空格分隔。",
+      "constraints": [
+        "1 ≤ k ≤ 不同数字数 ≤ n ≤ 200000",
+        "|数字| ≤ 10^9"
+      ],
+      "samples": [
+        {
+          "input": "9 3\n5 1 5 2 1 2 3 3 4\n",
+          "output": "5 1 2\n"
+        }
+      ],
+      "hidden_tests": [
+        {
+          "input": "7 2\n2 3 2 3 4 4 4\n",
+          "output": "4 2\n"
+        },
+        {
+          "input": "6 3\n-1 -2 -1 -2 -3 -3\n",
+          "output": "-1 -2 -3\n"
+        },
+        {
+          "input": "4 1\n9 8 7 6\n",
+          "output": "9\n"
+        }
+      ],
+      "starter_code": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    // TODO: write your solution here\n\n    return 0;\n}\n",
+      "reference_solution": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    int n, k;\n    cin >> n >> k;\n    struct Info {\n        long long value;\n        int count;\n        int first;\n    };\n    vector<Info> items;\n    unordered_map<long long, int> index;\n    for (int i = 0; i < n; ++i) {\n        long long x;\n        cin >> x;\n        auto it = index.find(x);\n        if (it == index.end()) {\n            index[x] = static_cast<int>(items.size());\n            items.push_back({x, 1, i});\n        } else {\n            ++items[it->second].count;\n        }\n    }\n    sort(items.begin(), items.end(), [](const Info& a, const Info& b) {\n        if (a.count != b.count) return a.count > b.count;\n        return a.first < b.first;\n    });\n    for (int i = 0; i < k; ++i) {\n        if (i) cout << ' ';\n        cout << items[i].value;\n    }\n    cout << '\\n';\n    return 0;\n}\n"
     },
     {
       "id": "huawei-expression-parser",
-      "title": "表达式求值",
-      "tags": ["栈", "字符串", "递归"],
+      "title": "带变量的整数表达式求值",
+      "difficulty": "Medium",
+      "category": "stack_parser",
+      "tags": [
+        "递归下降",
+        "字符串",
+        "哈希"
+      ],
       "level": 2,
-      "target": "解决华为常见字符串模拟题"
+      "time_limit_ms": 2000,
+      "memory_limit_mb": 256,
+      "description": "给定若干变量的整数值，再计算一个包含变量、整数、加法、减法、乘法、圆括号和一元正负号的合法表达式。",
+      "input_format": "第一行输入变量数 m。之后 m 行输入变量名和值。最后一行输入表达式。变量名由字母、数字和下划线组成且首字符为字母，表达式引用的变量均已定义。",
+      "output_format": "输出表达式的整数计算结果。",
+      "constraints": [
+        "0 ≤ m ≤ 10000",
+        "表达式长度不超过 200000",
+        "所有中间结果在 64 位有符号整数范围内"
+      ],
+      "samples": [
+        {
+          "input": "3\nx 2\ny 3\nz 4\nx + y * (z - 1)\n",
+          "output": "11\n"
+        }
+      ],
+      "hidden_tests": [
+        {
+          "input": "2\na 10\nb 4\na - b * 2\n",
+          "output": "2\n"
+        },
+        {
+          "input": "1\nvalue 7\n-(value + 3) * 2\n",
+          "output": "-20\n"
+        },
+        {
+          "input": "0\n1 + 2 * 3\n",
+          "output": "7\n"
+        }
+      ],
+      "starter_code": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    // TODO: write your solution here\n\n    return 0;\n}\n",
+      "reference_solution": "#include <bits/stdc++.h>\nusing namespace std;\n\nclass Parser {\npublic:\n    Parser(string input, const unordered_map<string, long long>& values)\n        : text(move(input)), variables(values), pos(0) {}\n\n    long long parseExpression() {\n        long long value = parseTerm();\n        while (true) {\n            skipSpaces();\n            if (match('+')) value += parseTerm();\n            else if (match('-')) value -= parseTerm();\n            else break;\n        }\n        return value;\n    }\n\nprivate:\n    string text;\n    const unordered_map<string, long long>& variables;\n    size_t pos;\n\n    void skipSpaces() {\n        while (pos < text.size() && isspace(static_cast<unsigned char>(text[pos]))) ++pos;\n    }\n\n    bool match(char ch) {\n        skipSpaces();\n        if (pos < text.size() && text[pos] == ch) {\n            ++pos;\n            return true;\n        }\n        return false;\n    }\n\n    long long parseTerm() {\n        long long value = parseFactor();\n        while (true) {\n            if (match('*')) value *= parseFactor();\n            else break;\n        }\n        return value;\n    }\n\n    long long parseFactor() {\n        skipSpaces();\n        if (match('+')) return parseFactor();\n        if (match('-')) return -parseFactor();\n        if (match('(')) {\n            long long value = parseExpression();\n            match(')');\n            return value;\n        }\n        if (pos < text.size() && isdigit(static_cast<unsigned char>(text[pos]))) {\n            long long value = 0;\n            while (pos < text.size() && isdigit(static_cast<unsigned char>(text[pos]))) {\n                value = value * 10 + (text[pos++] - '0');\n            }\n            return value;\n        }\n        string name;\n        while (pos < text.size() &&\n               (isalnum(static_cast<unsigned char>(text[pos])) || text[pos] == '_')) {\n            name.push_back(text[pos++]);\n        }\n        return variables.at(name);\n    }\n};\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    int m;\n    cin >> m;\n    unordered_map<string, long long> variables;\n    for (int i = 0; i < m; ++i) {\n        string name;\n        long long value;\n        cin >> name >> value;\n        variables[name] = value;\n    }\n    cin.ignore(numeric_limits<streamsize>::max(), '\\n');\n    string expression;\n    getline(cin, expression);\n    cout << Parser(expression, variables).parseExpression() << '\\n';\n    return 0;\n}\n"
     }
   ]
 }

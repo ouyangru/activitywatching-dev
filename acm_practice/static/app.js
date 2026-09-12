@@ -193,7 +193,7 @@ async function init() {
     state.problems = data.problems || [];
     compilerStatus.textContent = data.compiler_available ? "g++ READY" : "g++ 未找到";
     compilerStatus.classList.toggle("warning", !data.compiler_available);
-    problemSelect.innerHTML = state.problems.map((problem) => `<option value="${problem.id}">${escapeHtml(problem.title)}</option>`).join("");
+    problemSelect.innerHTML = state.problems.map((problem) => `<option value="${problem.id}">[${escapeHtml(problem.source)}] ${escapeHtml(problem.title)}</option>`).join("");
     if (state.problems.length) {
       renderProblem(state.problems[0]);
     }
