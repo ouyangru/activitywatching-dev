@@ -11,6 +11,7 @@ from fastapi import Cookie, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, RedirectResponse
 
 from . import debuglog
+from .agent_usage import install_agent_usage_monitor
 from .main import DEFAULT_DB, STATIC_DIR, create_app
 from .recruitment import build_recruitment_router, scan_qq_mail
 from .recruitment_calendar import build_recruitment_calendar_router
@@ -22,6 +23,11 @@ from .recruitment_feishu_queue import build_recruitment_feishu_queue_router
 
 LOG = logging.getLogger("activitywatch.recruitment")
 app = create_app()
+agent_usage_monitor = install_agent_usage_monitor(app.state.agent)
+# DailySummarizer 在 create_app() 时会保存 Agent 原始 LLM 引用；生产环境默认两者共用模型。
+# 这里让 Agent ② 也经过同一个监控器，否则只能看到分类开销、漏掉日报生成开销。
+if agent_usage_monitor is not None and getattr(app.state.summarizer, "llm", None) is not None:
+    app.state.summarizer.llm = agent_usage_monitor
 
 
 @app.middleware("http")
@@ -109,6 +115,18 @@ async def debug_client_error(
         stack=stack,
     )
     return {"recorded": True}
+
+
+@app.get("/api/v1/agent/usage-summary")
+def agent_usage_summary(
+    request: Request,
+    activity_token: str | None = Cookie(default=None),
+) -> dict[str, object]:
+    """当前服务进程内的 Agent 调用/估算 token/费用统计；重启后重新计数。"""
+    require_recruitment_auth(request, activity_token)
+    if agent_usage_monitor is None:
+        return {"enabled": False, "calls": 0, "estimated_total_tokens": 0, "estimated_cost_usd": 0.0}
+    return {"enabled": True, "model": app.state.agent.model_name, **agent_usage_monitor.snapshot()}
 
 
 db_path = Path(os.getenv("ACTIVITYWATCH_DB_PATH", str(DEFAULT_DB)))

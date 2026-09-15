@@ -35,7 +35,15 @@ window.DevLog = (() => {
       }
       case 'agent_input': return `${entry.llm_kind || ''} · ${entry.model || ''} · 请求 ${entry.request_id || ''}`;
       case 'agent_output': return `${entry.llm_kind || ''} · ${entry.status || ''}${entry.elapsed_ms != null ? ` · ${entry.elapsed_ms}ms` : ''}${entry.error ? ` · ${entry.error}` : ''}`;
-      case 'event': return `${entry.action || '事件'}${entry.status ? ` · ${entry.status}` : ''}${entry.detail ? ` · ${entry.detail}` : ''}${entry.error ? ` · ${entry.error}` : ''}`;
+      case 'event': {
+        if (entry.module === 'agent' && entry.action === 'llm_usage') {
+          const cost = entry.pricing_configured ? ` · ≈$${Number(entry.estimated_cost_usd || 0).toFixed(6)}` : '';
+          const batch = entry.batch_size != null ? ` · batch ${entry.batch_size}` : '';
+          const waste = entry.possible_waste ? ` · 疑似浪费：${(entry.waste_reasons || []).join(', ')}` : '';
+          return `LLM ${entry.llm_kind || ''} · ≈${entry.estimated_total_tokens ?? 0} tokens${batch}${cost}${waste}`;
+        }
+        return `${entry.action || '事件'}${entry.status ? ` · ${entry.status}` : ''}${entry.detail ? ` · ${entry.detail}` : ''}${entry.error ? ` · ${entry.error}` : ''}`;
+      }
       default: return entry.action || entry.detail || '';
     }
   }
@@ -95,8 +103,14 @@ window.DevLog = (() => {
 
     async function loadAgentStatus() {
       try {
-        const agent = await (window.ActivityUI ? ActivityUI.json('/api/v1/agent/status') : fetch('/api/v1/agent/status').then(r => r.json()));
-        setStatus(`Agent：<b>${agent.enabled ? `启用（${agent.model}）` : '未启用'}</b> · 判断缓存 <b>${agent.evidence_count}</b> 条 · 记忆 <b>${agent.memory_count}</b> 条${agent.cooldown_seconds > 0 ? ` · 熔断冷却 ${agent.cooldown_seconds}s` : ''}`);
+        const read = url => window.ActivityUI ? ActivityUI.json(url) : fetch(url).then(r => r.json());
+        const [agent, usage] = await Promise.all([read('/api/v1/agent/status'), read('/api/v1/agent/usage-summary').catch(() => null)]);
+        let usageText = '';
+        if (usage?.enabled) {
+          const cost = usage.pricing_configured ? ` · 估算费用 <b>$${Number(usage.estimated_cost_usd || 0).toFixed(6)}</b>` : ' · 费用单价未配置';
+          usageText = ` · LLM 调用 <b>${usage.calls}</b> 次 · ≈<b>${usage.estimated_total_tokens}</b> tokens · 疑似浪费 <b>${usage.possible_waste_calls}</b> 次${cost}`;
+        }
+        setStatus(`Agent：<b>${agent.enabled ? `启用（${agent.model}）` : '未启用'}</b> · 判断缓存 <b>${agent.evidence_count}</b> 条 · 记忆 <b>${agent.memory_count}</b> 条${agent.cooldown_seconds > 0 ? ` · 熔断冷却 ${agent.cooldown_seconds}s` : ''}${usageText}`);
       } catch { setStatus('Agent 状态不可用'); }
     }
 
@@ -160,7 +174,7 @@ window.DevLog = (() => {
       state.textContent = '';
     }
 
-    async function refresh() { try { await fetchEntries(); } catch (error) { state.textContent = `加载失败：${error.message}`; } }
+    async function refresh() { try { await Promise.all([fetchEntries(), loadAgentStatus()]); } catch (error) { state.textContent = `加载失败：${error.message}`; } }
 
     function startPolling() { stopPolling(); timer = setInterval(() => { if (!document.hidden && $('devAuto').checked) refresh(); }, POLL_MS); }
     function stopPolling() { if (timer) { clearInterval(timer); timer = null; } }
