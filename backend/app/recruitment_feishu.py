@@ -154,13 +154,17 @@ def queue_recruitment_feishu_proposal(
     subject: str,
     body: str = "",
 ) -> bool:
-    stage = infer_recruitment_stage(subject, body)
+    # Both ingestion and historical repair derive from the canonical local item.
+    from .recruitment_feishu_queue import _proposal_payload
+
+    if item.get("status") == "cancelled":
+        return False
+    canonical = {**item, "source_subject": item.get("source_subject") or subject}
+    stage, proposed, subject, next_at = _proposal_payload(canonical)
     if not stage:
         return False
     ensure_recruitment_feishu_tables(connection)
-    next_at = item.get("start_at") or item.get("deadline_at")
     latest_update = subject.strip() or item.get("title") or stage
-    proposed = build_mail_pipeline_fields(item, stage, subject)
     now = _now_iso()
     cursor = connection.execute(
         """
@@ -610,6 +614,9 @@ def build_recruitment_feishu_router(db_path: Path, require_auth: Any) -> APIRout
 
     @router.get("/proposals")
     def list_proposals(limit: int = 100) -> dict[str, Any]:
+        from .recruitment_feishu_queue import backfill_recruitment_feishu_proposals
+
+        backfill_recruitment_feishu_proposals(db_path)
         limit = min(max(limit, 1), 300)
         client = FeishuBitableClient()
         fields: list[dict[str, Any]] | None = None
@@ -628,7 +635,12 @@ def build_recruitment_feishu_router(db_path: Path, require_auth: Any) -> APIRout
         with _connect(db_path) as connection:
             ensure_recruitment_feishu_tables(connection)
             rows = connection.execute(
-                "SELECT * FROM recruitment_feishu_proposals ORDER BY CASE status WHEN 'pending' THEN 0 ELSE 1 END, id DESC LIMIT ?",
+                """SELECT * FROM recruitment_feishu_proposals
+                   WHERE status='pending' OR id IN (
+                       SELECT id FROM recruitment_feishu_proposals
+                       WHERE status != 'pending' ORDER BY id DESC LIMIT ?
+                   )
+                   ORDER BY CASE status WHEN 'pending' THEN 0 ELSE 1 END, id DESC""",
                 (limit,),
             ).fetchall()
         return {

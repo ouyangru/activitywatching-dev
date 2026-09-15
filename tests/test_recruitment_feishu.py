@@ -35,7 +35,7 @@ def live_fields():
 
 
 def test_infer_recruitment_stage_prefers_specific_round():
-    assert infer_recruitment_stage("腾讯二面邀请") == "二面"
+    assert infer_recruitment_stage("腾讯二面邀请") == "2面"
     assert infer_recruitment_stage("字节跳动 HR 面试通知") == "HR面"
     assert infer_recruitment_stage("在线测评邀请") == "测评"
     assert infer_recruitment_stage("招聘流程终止通知") == "流程结束"
@@ -137,11 +137,11 @@ def test_backfill_enriches_pending_review_without_writing(tmp_path):
         row = connection.execute(
             "SELECT source, company, stage, status, record_id, fields_json FROM recruitment_feishu_proposals"
         ).fetchone()
-    assert row[:5] == ("mail", "腾讯", "二面", "pending", None)
+    assert row[:5] == ("mail", "腾讯", "2面", "pending", None)
     fields = json.loads(row[5])
     assert fields["投递公司"] == "腾讯"
     assert fields["岗位"] == "Linux系统软件工程师"
-    assert fields["投递状态"] == "二面"
+    assert fields["投递状态"] == "2面"
     assert fields["二面日期"] == "2026-09-15T14:00:00+08:00"
 
 
@@ -192,3 +192,109 @@ def test_unmatched_mail_proposal_can_create_new_feishu_record(tmp_path):
     assert serialized["write_mode"] == "create"
     assert serialized["can_approve"] is True
     assert serialized["proposed_fields"]["投递公司"] == "Shopee"
+
+
+def test_canonical_types_repair_generic_subjects_and_preserve_review_states(tmp_path):
+    from backend.app.recruitment_feishu import queue_recruitment_feishu_proposal
+
+    db_path = tmp_path / "recruitment.db"
+    init_recruitment_db(db_path)
+    with sqlite3.connect(db_path) as connection:
+        for item_id, item_type, status in [
+            (1, "written_test", "pending"), (2, "assessment", "uncertain"),
+            (3, "written_test", "done"), (4, "assessment", "cancelled"),
+        ]:
+            connection.execute(
+                "INSERT INTO recruitment_items(id,message_id,company,title,item_type,status,deadline_at,created_at,updated_at) "
+                "VALUES(?,?, '腾讯','招聘安排',?,?, '2026-09-20', 'now','now')",
+                (item_id, str(item_id), item_type, status),
+            )
+    assert backfill_recruitment_feishu_proposals(db_path)["created"] == 3
+    with sqlite3.connect(db_path) as connection:
+        rows = connection.execute(
+            "SELECT recruitment_item_id,stage,fields_json FROM recruitment_feishu_proposals ORDER BY recruitment_item_id"
+        ).fetchall()
+        assert [row[1] for row in rows] == ["笔试", "测评", "笔试"]
+        assert json.loads(rows[0][2])["笔试日期"] == "2026-09-20"
+        assert json.loads(rows[1][2])["测评日期"] == "2026-09-20"
+        connection.execute("UPDATE recruitment_feishu_proposals SET status='rejected' WHERE recruitment_item_id=1")
+        connection.execute("UPDATE recruitment_feishu_proposals SET status='applied' WHERE recruitment_item_id=2")
+        assert not queue_recruitment_feishu_proposal(
+            connection, 4, {"status": "cancelled", "item_type": "assessment"}, "招聘安排"
+        )
+    assert backfill_recruitment_feishu_proposals(db_path)["created"] == 0
+    with sqlite3.connect(db_path) as connection:
+        assert connection.execute(
+            "SELECT status FROM recruitment_feishu_proposals ORDER BY recruitment_item_id"
+        ).fetchall() == [("rejected",), ("applied",), ("pending",)]
+        assert connection.execute("SELECT status FROM recruitment_items ORDER BY id").fetchall() == [
+            ("pending",), ("uncertain",), ("done",), ("cancelled",)
+        ]
+
+
+def test_qq_scan_queues_body_only_written_test_atomically(tmp_path, monkeypatch):
+    from email.message import EmailMessage
+    from backend.app.recruitment import scan_qq_mail
+
+    mail = EmailMessage()
+    mail["Subject"] = "【腾讯】校园招聘安排"
+    mail["From"] = "campus@example.com"
+    mail["Message-ID"] = "<body-only-test@example.com>"
+    mail["Date"] = "Tue, 15 Sep 2026 10:00:00 +0800"
+    mail.set_content("请参加在线考试，考试时间：2026年9月20日 19:00。")
+
+    class FakeIMAP:
+        def __init__(self, *args): pass
+        def login(self, *args): pass
+        def select(self, *args, **kwargs): return "OK", []
+        def uid(self, command, *args):
+            if command == "search": return "OK", [b"1"]
+            return "OK", [(b"1", mail.as_bytes())]
+        def logout(self): pass
+
+    monkeypatch.setenv("QQ_EMAIL", "test@example.com")
+    monkeypatch.setenv("QQ_EMAIL_AUTH_CODE", "test-code")
+    monkeypatch.setattr("backend.app.recruitment.imaplib.IMAP4_SSL", FakeIMAP)
+    db_path = tmp_path / "recruitment.db"
+    assert scan_qq_mail(db_path)["imported"] == 1
+    assert scan_qq_mail(db_path)["imported"] == 0
+    with sqlite3.connect(db_path) as connection:
+        row = connection.execute(
+            "SELECT r.item_type,p.stage,p.status,p.fields_json FROM recruitment_items r "
+            "JOIN recruitment_feishu_proposals p ON p.recruitment_item_id=r.id"
+        ).fetchone()
+        assert row[:3] == ("written_test", "笔试", "pending")
+        assert json.loads(row[3])["笔试日期"].startswith("2026-09-20T19:00")
+        assert connection.execute("SELECT COUNT(*) FROM recruitment_feishu_proposals").fetchone()[0] == 1
+
+
+def test_proposal_read_repairs_history_and_does_not_truncate_pending(tmp_path, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from backend.app.recruitment_feishu import FeishuBitableClient, build_recruitment_feishu_router
+
+    db_path = tmp_path / "recruitment.db"
+    init_recruitment_db(db_path)
+    with sqlite3.connect(db_path) as connection:
+        connection.executemany(
+            "INSERT INTO recruitment_items(message_id,company,title,item_type,status,created_at,updated_at) "
+            "VALUES(?,'腾讯','招聘安排','assessment','pending','now','now')",
+            [(str(i),) for i in range(151)],
+        )
+    monkeypatch.setattr(FeishuBitableClient, "configured", property(lambda self: False))
+    app = FastAPI()
+    app.include_router(build_recruitment_feishu_router(db_path, lambda: None))
+    with TestClient(app) as client:
+        for _ in range(2):
+            response = client.get("/api/v1/recruitment/feishu/proposals?limit=150")
+            assert response.status_code == 200
+            proposals = response.json()["proposals"]
+            assert len(proposals) == 151
+            assert all(p["stage"] == "测评" and p["status"] == "pending" for p in proposals)
+
+
+def test_terminal_progress_is_not_overridden_by_past_test_type():
+    from backend.app.recruitment_feishu_queue import _proposal_payload
+
+    assert _proposal_payload({"item_type": "written_test", "title": "笔试未通过通知"})[0] == "流程结束"
+    assert _proposal_payload({"item_type": "assessment", "title": "测评通过，录用通知"})[0] == "Offer"

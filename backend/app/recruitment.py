@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from .recruitment_feishu import queue_recruitment_feishu_proposal
 from .recruitment_pipeline import ensure_recruitment_metadata_columns, extract_pipeline_metadata
 
 
@@ -371,7 +372,7 @@ def scan_qq_mail(db_path: Path, limit: int | None = None) -> dict[str, Any]:
                     continue
 
                 now = _now_iso()
-                connection.execute(
+                cursor = connection.execute(
                     """
                     INSERT INTO recruitment_items(
                         message_id, imap_uid, company, title, item_type, mode, status,
@@ -387,6 +388,10 @@ def scan_qq_mail(db_path: Path, limit: int | None = None) -> dict[str, Any]:
                         item.get("position"), item.get("recruitment_type"), item.get("location"), item.get("priority"),
                         subject, sender, received_at.isoformat(), item["extraction_note"], now, now,
                     ),
+                )
+                queue_recruitment_feishu_proposal(
+                    connection, cursor.lastrowid,
+                    {**item, "source_received_at": received_at.isoformat()}, subject,
                 )
                 _insert_log(connection, message_id, uid, subject, "created", item["extraction_note"])
                 imported += 1
