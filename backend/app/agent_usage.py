@@ -96,14 +96,15 @@ class AgentUsageMonitor:
         output_rate = _float_env("ACTIVITYWATCH_AGENT_OUTPUT_USD_PER_1M")
         estimated_cost = (input_tokens * input_rate + output_tokens * output_rate) / 1_000_000
 
-        possible_waste = bool(duplicate_count > 0 or not raw or (batch_size is not None and batch_size <= 1))
-        reasons: list[str] = []
+        possible_waste = bool(duplicate_count > 0 or not raw)
+        waste_reasons: list[str] = []
+        efficiency_flags: list[str] = []
         if duplicate_count > 0:
-            reasons.append(f"same_prompt_repeated_{duplicate_count + 1}x")
+            waste_reasons.append(f"same_prompt_repeated_{duplicate_count + 1}x")
         if not raw:
-            reasons.append("empty_or_failed_output")
+            waste_reasons.append("empty_or_failed_output")
         if batch_size is not None and batch_size <= 1:
-            reasons.append("tiny_batch")
+            efficiency_flags.append("tiny_batch")
 
         with self._lock:
             self.calls += 1
@@ -131,7 +132,8 @@ class AgentUsageMonitor:
             pricing_configured=bool(input_rate or output_rate),
             elapsed_ms=elapsed_ms,
             possible_waste=possible_waste,
-            waste_reasons=reasons,
+            waste_reasons=waste_reasons,
+            efficiency_flags=efficiency_flags,
             repeat_window_seconds=int(repeat_window),
             total_calls=totals["calls"],
             total_possible_waste_calls=totals["possible_waste_calls"],
