@@ -1,6 +1,6 @@
 /* 开发者视图：调试日志流（类型 / 模块 / 异常筛选 / 搜索 / 自动刷新）。 */
 window.DevLog = (() => {
-  const escape = value => String(value ?? '').replace(/[&<>"']/g, x => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[x]));
+  const escape = value => String(value ?? '').replace(/[&<>"']/g, x => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]));
   const clock = value => { try { return new Intl.DateTimeFormat('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date(value)); } catch { return ''; } };
   const POLL_MS = 3000;
 
