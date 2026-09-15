@@ -24,6 +24,10 @@ from .recruitment_feishu_queue import build_recruitment_feishu_queue_router
 LOG = logging.getLogger("activitywatch.recruitment")
 app = create_app()
 agent_usage_monitor = install_agent_usage_monitor(app.state.agent)
+# DailySummarizer 在 create_app() 时会保存 Agent 原始 LLM 引用；生产环境默认两者共用模型。
+# 这里让 Agent ② 也经过同一个监控器，否则只能看到分类开销、漏掉日报生成开销。
+if agent_usage_monitor is not None and getattr(app.state.summarizer, "llm", None) is not None:
+    app.state.summarizer.llm = agent_usage_monitor
 
 
 @app.middleware("http")
