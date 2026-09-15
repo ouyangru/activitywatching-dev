@@ -12,6 +12,7 @@ from .recruitment_feishu import (
     _now_iso,
     ensure_recruitment_feishu_tables,
     infer_recruitment_stage,
+    queue_recruitment_feishu_proposal,
 )
 from .recruitment_pipeline import build_mail_pipeline_fields
 
@@ -51,7 +52,15 @@ def _proposal_payload(item: dict[str, Any]) -> tuple[str | None, dict[str, Any],
             item.get("extraction_note") or "",
         ) if part
     )
-    stage = _infer_mail_stage(subject, context)
+    # The local item was classified using the full mail body. Do not reclassify
+    # written tests/assessments using only the persisted subject and time note.
+    stage = {"written_test": "笔试", "assessment": "测评"}.get(item.get("item_type"))
+    inferred = _infer_mail_stage(subject, context)
+    # A rejection/offer notification may mention a past written test.
+    if inferred in {"流程结束", "Offer"}:
+        stage = inferred
+    elif not stage:
+        stage = inferred or ({"interview": "面试"}.get(item.get("item_type")))
     if not stage:
         return None, {}, subject, None
     next_at = item.get("start_at") or item.get("deadline_at")
@@ -74,7 +83,7 @@ def backfill_recruitment_feishu_proposals(db_path: Path) -> dict[str, int]:
             SELECT p.id AS proposal_id, r.*
             FROM recruitment_feishu_proposals p
             JOIN recruitment_items r ON r.id = p.recruitment_item_id
-            WHERE p.source='mail' AND p.status='pending'
+            WHERE p.source='mail' AND p.status='pending' AND r.status != 'cancelled'
               AND (p.fields_json IS NULL OR p.fields_json='' OR p.fields_json='{}')
             ORDER BY p.id ASC
             """
@@ -120,27 +129,7 @@ def backfill_recruitment_feishu_proposals(db_path: Path) -> dict[str, int]:
             if not stage:
                 skipped += 1
                 continue
-            latest_update = subject.strip() or item.get("title") or stage
-            cursor = connection.execute(
-                """
-                INSERT OR IGNORE INTO recruitment_feishu_proposals(
-                    recruitment_item_id, source, company, stage, latest_update, next_at,
-                    source_title, fields_json, status, created_at, updated_at
-                ) VALUES (?, 'mail', ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
-                """,
-                (
-                    item["id"],
-                    item.get("company") or "",
-                    stage,
-                    latest_update[:512],
-                    next_at,
-                    subject[:512],
-                    json.dumps(fields, ensure_ascii=False),
-                    now,
-                    now,
-                ),
-            )
-            if cursor.rowcount:
+            if queue_recruitment_feishu_proposal(connection, item["id"], item, subject):
                 created += 1
         connection.commit()
     return {"created": created, "enriched": enriched, "skipped": skipped}
