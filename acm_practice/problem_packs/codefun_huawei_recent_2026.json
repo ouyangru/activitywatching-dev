@@ -321,11 +321,11 @@
       "source_problem_id": "P5160",
       "source_url": "https://codefun2000.com/new-p/P5160",
       "adapted": true,
-      "time_limit_ms": 2000,
+      "time_limit_ms": 1000,
       "memory_limit_mb": 256,
       "starter_code": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    // TODO: write your solution here\n\n    return 0;\n}\n",
       "id": "codefun-huawei-20260701-energy",
-      "title": "近期改编：递增代价的资源分配",
+      "title": "华为 2026-07-01：魔法能量分配",
       "difficulty": "Hard",
       "category": "greedy",
       "tags": [
@@ -333,18 +333,20 @@
         "排序",
         "资源分配"
       ],
-      "description": "有 n 个接收器和 m 个资源。接收器 i 第 k 次接收资源时会产生 k*a[i] 的代价；把能量为 b 的资源放入该槽位可获得 max(0,b-k*a[i]) 收益。每个资源最多使用一次，求最大总收益。",
-      "input_format": "第一行输入 n 和 m；第二行输入 n 个基础代价 a；第三行输入 m 个资源能量 b。",
-      "output_format": "输出最大总收益。",
+      "description": "有 n 位法师和 m 个魔法水晶。法师 i 的初始能量参数为 a[i]，水晶 j 的基础能量为 b[j]。每个水晶最多分配给一位法师，也可以不分配；每位法师可以接收任意多个水晶。若某个水晶是法师 i 接收的第 k 个水晶（k 从 1 开始，只按该法师已经接收的水晶数量计数），它带来的实际能量增量为 max(0, b[j] - k*a[i])。“第 k 个”与水晶在输入中的下标无关：同一位法师先后接收两个水晶时，它们分别使用 k=1 和 k=2。请决定每个水晶分配给哪位法师以及接收顺序，使所有法师获得的总能量增量最大。",
+      "input_format": "第一行输入两个整数 n 和 m，分别表示法师数量和魔法水晶数量。第二行输入 n 个整数 a[1]...a[n]，其中 a[i] 是法师 i 的初始能量参数。第三行输入 m 个整数 b[1]...b[m]，其中 b[j] 是水晶 j 的基础能量。",
+      "output_format": "输出一个整数，表示合理分配水晶后能够获得的最大总能量增量。",
       "constraints": [
-        "1 ≤ n,m ≤ 2000",
-        "1 ≤ a[i],b[i] ≤ 10^9",
-        "答案使用 64 位整数"
+        "1 ≤ n,m ≤ 100000",
+        "1 ≤ a[i],b[j] ≤ 100000",
+        "每个水晶最多使用一次，也可以不使用",
+        "答案可能超过 32 位整数范围，请使用 64 位整数"
       ],
       "samples": [
         {
           "input": "2 3\n5 100\n20 15 10\n",
-          "output": "20\n"
+          "output": "20\n",
+          "explanation": "法师 1 的 a[1]=5。把能量 20 的水晶作为他接收的第 1 个水晶，收益为 20-1×5=15；再把能量 15 的水晶作为他接收的第 2 个水晶，收益为 15-2×5=5。剩余能量 10 的水晶无论分给法师 1（下一次代价为 3×5=15）还是法师 2（第一次代价为 1×100=100），收益都为 0，因此可以不分配。最大总收益为 15+5=20。"
         }
       ],
       "hidden_tests": [
@@ -365,7 +367,13 @@
           "output": "17\n"
         }
       ],
-      "reference_solution": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    int n, m;\n    cin >> n >> m;\n    vector<long long> base(n), crystal(m);\n    for (long long& x : base) cin >> x;\n    for (long long& x : crystal) cin >> x;\n\n    vector<long long> costs;\n    costs.reserve(static_cast<size_t>(n) * m);\n    for (long long a : base) {\n        for (int k = 1; k <= m; ++k) costs.push_back(a * k);\n    }\n    sort(costs.begin(), costs.end());\n    sort(crystal.rbegin(), crystal.rend());\n\n    long long answer = 0;\n    for (int i = 0; i < m; ++i) {\n        answer += max(0LL, crystal[i] - costs[i]);\n    }\n    cout << answer << '\\n';\n    return 0;\n}\n"
+      "reference_solution": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    int n, m;\n    cin >> n >> m;\n    vector<long long> a(n), crystal(m);\n    for (long long& x : a) cin >> x;\n    for (long long& x : crystal) cin >> x;\n\n    using Slot = pair<long long, int>;  // {当前槽位代价, 法师编号}\n    priority_queue<Slot, vector<Slot>, greater<Slot>> minHeap;\n    for (int i = 0; i < n; ++i) minHeap.push({a[i], i});\n\n    vector<long long> cheapestCosts;\n    cheapestCosts.reserve(m);\n    for (int count = 0; count < m; ++count) {\n        auto [cost, wizard] = minHeap.top();\n        minHeap.pop();\n        cheapestCosts.push_back(cost);\n        minHeap.push({cost + a[wizard], wizard});\n    }\n\n    sort(crystal.rbegin(), crystal.rend());\n\n    long long answer = 0;\n    for (int i = 0; i < m; ++i) {\n        if (crystal[i] <= cheapestCosts[i]) break;\n        answer += crystal[i] - cheapestCosts[i];\n    }\n\n    cout << answer << '\\n';\n    return 0;\n}\n",
+      "solution_outline": [
+        "把法师 i 第 k 次接收水晶看成一个代价为 k*a[i] 的槽位，因此每位法师对应递增序列 a[i],2*a[i],3*a[i],...。",
+        "使用小根堆合并这 n 个递增序列：初始压入每位法师的第 1 个槽位；每弹出一个代价 k*a[i]，就压入该法师的下一个代价 (k+1)*a[i]。弹出 m 次即可得到全局最小的 m 个槽位代价，复杂度为 O((n+m)log n)。",
+        "把水晶能量 b 从大到小排序，把槽位代价从小到大配对。根据交换论证，大能量配小代价不会比交叉配对更差。",
+        "对每对只累加 max(0,b-cost)。非正收益的水晶直接不使用即可。"
+      ]
     }
   ]
 }
