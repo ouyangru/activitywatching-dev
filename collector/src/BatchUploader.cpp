@@ -158,6 +158,15 @@ bool BatchUploader::flush() {
         queue_size_ = lines.size();
         return write_queue(lines);
     }
+    if (status == 401 || status == 403) {
+        // Auth failures are configuration errors, not bad payloads: the same
+        // data will upload fine once the token is fixed. Keep the batch in the
+        // queue and let the caller back off, exactly like a network failure.
+        diagnostics::write("flush: server returned HTTP " + std::to_string(status) +
+                           " (auth); keeping " + std::to_string(count) +
+                           " event(s) queued and backing off instead of dropping");
+        return false;
+    }
     if (status >= 400 && status < 500 && status != 429 && status != 408) {
         // The server permanently rejects this payload (e.g. 422 validation).
         // Retrying can never succeed, and the bad head would block the whole
